@@ -93,6 +93,9 @@ public class SubmitPlotClient {
     public static String normalizeUrl(String raw) {
         if (raw == null) return "";
         String s = raw.trim();
+        if (s.contains(".base44.app")) {
+            s = s.replace(".base44.app", ".base44.com");
+        }
         // se finisce con "/", toglilo
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
         // se arriva un endpoint completo (/functions/submitPlot o simili), ricava il base
