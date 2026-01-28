@@ -26,7 +26,7 @@ public class AppConfig {
 
     public static AppConfig defaults() {
         AppConfig c = new AppConfig();
-        c.endpointUrl = "https://mappatura-smd-8dad3f3c.base44.app/functions/submitPlot";
+        c.endpointUrl = "https://mappatura-smd-8dad3f3c.base44.app";
         c.ingestKey = ""; // non usato in GUI
         c.sessionCode = "";
         c.autoStart = false;

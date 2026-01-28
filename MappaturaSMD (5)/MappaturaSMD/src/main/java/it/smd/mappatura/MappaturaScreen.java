@@ -51,7 +51,9 @@ public class MappaturaScreen extends Screen {
                     ConfigManager.save();
                     SubmitPlotClient.checkAccessAsync(cfg.sessionCode, ar -> {
                         MinecraftClient.getInstance().execute(() -> {
-                            if (ar.authorized) {
+                            if (ar == null) {
+                                HudOverlay.show(Text.literal("⟡ Errore di rete").formatted(Formatting.RED));
+                            } else if (ar.authorized) {
                                 HudOverlay.show(Text.literal("⟡ COLLEGATO").formatted(Formatting.GREEN));
                             } else {
                                 HudOverlay.show(Text.literal("⟡ " + ar.reason).formatted(Formatting.RED));
