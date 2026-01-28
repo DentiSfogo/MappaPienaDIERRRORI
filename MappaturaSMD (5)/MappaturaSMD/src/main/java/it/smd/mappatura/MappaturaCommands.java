@@ -214,8 +214,14 @@ public class MappaturaCommands {
                     send(Text.literal("✅ checkAccess OK").formatted(Formatting.GREEN, Formatting.BOLD)
                             .append(Text.literal(" (" + (r.reason == null ? "OK" : r.reason) + ")").formatted(Formatting.GRAY)));
                 } else {
+                    String reason = (r.reason == null ? "NOT_AUTHORIZED" : r.reason);
+                    String status = r.httpStatus > 0 ? " HTTP " + r.httpStatus : "";
                     send(Text.literal("❌ checkAccess NEGATO").formatted(Formatting.RED, Formatting.BOLD)
-                            .append(Text.literal(" (" + (r.reason == null ? "NOT_AUTHORIZED" : r.reason) + ")").formatted(Formatting.RED)));
+                            .append(Text.literal(" (" + reason + status + ")").formatted(Formatting.RED)));
+                    if (r.debug != null && r.debug.has("exception")) {
+                        send(Text.literal("• exception: ").formatted(Formatting.GRAY)
+                                .append(Text.literal(r.debug.get("exception").getAsString()).formatted(Formatting.YELLOW)));
+                    }
                 }
             });
         });

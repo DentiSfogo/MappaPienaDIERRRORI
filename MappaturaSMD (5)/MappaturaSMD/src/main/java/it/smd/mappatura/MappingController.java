@@ -264,6 +264,11 @@ public class MappingController {
         }
         if (!result.success) {
             String e = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
+            if ("NETWORK_ERROR".equals(e) && result.debug != null && result.debug.has("exception")) {
+                String detail = result.debug.get("exception").getAsString();
+                HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (" + detail + ")", HudOverlay.Badge.ERROR);
+                return;
+            }
             if (result.httpStatus == 403 && "NOT_WHITELISTED".equalsIgnoreCase(e)) {
                 HudOverlay.showBadge("⛔ Accesso negato: richiedi la whitelist.", HudOverlay.Badge.ERROR);
                 return;
@@ -367,7 +372,7 @@ public class MappingController {
         private boolean shouldRetry(SubmitPlotClient.SubmitResult result) {
             if (result == null) return true;
             if (result.success) return false;
-            if ("NETWORK_ERROR".equals(result.error)) return true;
+            if (result.error != null && result.error.startsWith("NETWORK_ERROR")) return true;
             return result.httpStatus == 429 || result.httpStatus >= 500;
         }
     }

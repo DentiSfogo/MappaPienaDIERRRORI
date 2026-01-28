@@ -97,10 +97,15 @@ public class MappaturaSMDClient implements ClientModInitializer {
 
         SubmitPlotClient.checkAccessAsync(publishCode, result -> {
             authorized = (result != null && result.authorized);
+            boolean networkError = result == null
+                    || "NETWORK_ERROR".equals(result.reason)
+                    || (result.debug != null && result.debug.has("exception"));
 
             String message = authorized
                     ? "§a[SMD] Whitelist confermata. Mod attiva."
-                    : "§e[SMD] Non whitelistato. Usa /richiestawhitelist e poi /mappatura refresh";
+                    : (networkError
+                        ? "§c[SMD] Errore di rete. Controlla connessione/endpoint."
+                        : "§e[SMD] Non whitelistato. Usa /richiestawhitelist e poi /mappatura refresh");
 
             HudOverlay.show(Text.literal(message));
 
@@ -110,7 +115,12 @@ public class MappaturaSMDClient implements ClientModInitializer {
                     AppConfig updated = ConfigManager.get();
                     if (updated != null) {
                         updated.authorized = authorized;
-                        updated.lastAuthMessage = result != null && result.reason != null ? result.reason : (authorized ? "OK" : "NOT_AUTHORIZED");
+                        String fallback = authorized ? "OK" : "NOT_AUTHORIZED";
+                        String reason = result != null && result.reason != null ? result.reason : fallback;
+                        if (networkError && result != null && result.debug != null && result.debug.has("exception")) {
+                            reason = "NETWORK_ERROR (" + result.debug.get("exception").getAsString() + ")";
+                        }
+                        updated.lastAuthMessage = reason;
                         ConfigManager.save();
                     }
                 });
