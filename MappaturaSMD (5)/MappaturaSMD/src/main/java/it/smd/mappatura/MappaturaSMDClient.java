@@ -98,10 +98,22 @@ public class MappaturaSMDClient implements ClientModInitializer {
         SubmitPlotClient.checkAccessAsync(publishCode, result -> {
             authorized = (result != null && result.authorized);
 
-            if (authorized) {
-                HudOverlay.show(Text.literal("§a[SMD] Whitelist confermata. Mod attiva."));
-            } else {
-                HudOverlay.show(Text.literal("§e[SMD] Non whitelistato. Usa /richiestawhitelist e poi /mappatura refresh"));
+            String message = authorized
+                    ? "§a[SMD] Whitelist confermata. Mod attiva."
+                    : "§e[SMD] Non whitelistato. Usa /richiestawhitelist e poi /mappatura refresh";
+
+            HudOverlay.show(Text.literal(message));
+
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null) {
+                mc.execute(() -> {
+                    AppConfig updated = ConfigManager.get();
+                    if (updated != null) {
+                        updated.authorized = authorized;
+                        updated.lastAuthMessage = result != null && result.reason != null ? result.reason : (authorized ? "OK" : "NOT_AUTHORIZED");
+                        ConfigManager.save();
+                    }
+                });
             }
         });
     }
