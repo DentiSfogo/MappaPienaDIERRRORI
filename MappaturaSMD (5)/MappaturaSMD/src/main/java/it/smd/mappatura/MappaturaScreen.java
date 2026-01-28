@@ -12,7 +12,6 @@ public class MappaturaScreen extends Screen {
 
     private final MappingController controller;
     private TextFieldWidget sessionField;
-    private TextFieldWidget tokenField;
 
     public MappaturaScreen(MappingController controller) {
         super(Text.literal("Mappatura SMD"));
@@ -34,11 +33,6 @@ public class MappaturaScreen extends Screen {
         sessionField.setText(cfg.sessionCode == null ? "" : cfg.sessionCode);
         addDrawableChild(sessionField);
 
-        tokenField = new TextFieldWidget(this.textRenderer, x, y + 55, fieldW, 20, Text.literal(""));
-        tokenField.setPlaceholder(Text.literal("Bearer token (submitPlot)"));
-        tokenField.setText(cfg.bearerToken == null ? "" : cfg.bearerToken);
-        addDrawableChild(tokenField);
-
         ButtonWidget autoStartBtn = ButtonWidget.builder(
                 Text.literal(cfg.autoStart ? "Auto-start: ON" : "Auto-start: OFF")
                         .formatted(cfg.autoStart ? Formatting.GREEN : Formatting.GRAY),
@@ -47,14 +41,13 @@ public class MappaturaScreen extends Screen {
                     ConfigManager.save();
                     btn.setMessage(Text.literal(cfg.autoStart ? "Auto-start: ON" : "Auto-start: OFF")
                             .formatted(cfg.autoStart ? Formatting.GREEN : Formatting.GRAY));
-                }).dimensions(x, y + 80, fieldW, 20).build();
+                }).dimensions(x, y + 55, fieldW, 20).build();
         addDrawableChild(autoStartBtn);
 
         ButtonWidget saveTestBtn = ButtonWidget.builder(
                 Text.literal("Salva + Test"),
                 btn -> {
                     cfg.sessionCode = sessionField.getText().trim();
-                    cfg.bearerToken = tokenField.getText().trim();
                     ConfigManager.save();
                     SubmitPlotClient.checkAccessAsync(cfg.sessionCode, ar -> {
                         MinecraftClient.getInstance().execute(() -> {
@@ -67,7 +60,7 @@ public class MappaturaScreen extends Screen {
                             }
                         });
                     });
-                }).dimensions(x, y + 110, fieldW, 20).build();
+                }).dimensions(x, y + 85, fieldW, 20).build();
         addDrawableChild(saveTestBtn);
 
         ButtonWidget toggleBtn = ButtonWidget.builder(
@@ -75,7 +68,6 @@ public class MappaturaScreen extends Screen {
                         .formatted(controller.isRunning() ? Formatting.RED : Formatting.GREEN),
                 btn -> {
                     cfg.sessionCode = sessionField.getText().trim();
-                    cfg.bearerToken = tokenField.getText().trim();
                     ConfigManager.save();
 
                     if (cfg.sessionCode == null || cfg.sessionCode.isBlank()) {
@@ -92,7 +84,7 @@ public class MappaturaScreen extends Screen {
                         btn.setMessage(Text.literal("Ferma mappatura").formatted(Formatting.RED));
                         HudOverlay.show(Text.literal("▶ Mappatura avviata"));
                     }
-                }).dimensions(x, y + 140, fieldW, 20).build();
+                }).dimensions(x, y + 115, fieldW, 20).build();
         addDrawableChild(toggleBtn);
     }
 
