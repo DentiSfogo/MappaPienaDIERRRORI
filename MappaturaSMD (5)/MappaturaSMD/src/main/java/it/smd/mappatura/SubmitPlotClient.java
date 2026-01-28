@@ -358,6 +358,10 @@ public class SubmitPlotClient {
                 obj = null;
             }
 
+            if (obj == null) {
+                obj = createErrorResponse(cls, status);
+            }
+
             setHttpStatusIfPresent(obj, status);
             return obj;
         } catch (IOException | InterruptedException e) {
@@ -414,6 +418,10 @@ public class SubmitPlotClient {
                     obj = null;
                 }
 
+                if (obj == null) {
+                    obj = createErrorResponse(cls, status);
+                }
+
                 // se è una delle nostre classi con httpStatus, setto via reflection safe
                 setHttpStatusIfPresent(obj, status);
 
@@ -452,6 +460,39 @@ public class SubmitPlotClient {
         r.success = false;
         r.error = error;
         return r;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T createErrorResponse(Class<T> cls, int status) {
+        String error = status > 0 ? "HTTP_" + status : "INVALID_RESPONSE";
+        if (cls == SubmitResult.class) {
+            SubmitResult r = new SubmitResult();
+            r.success = false;
+            r.error = error;
+            r.httpStatus = status;
+            return (T) r;
+        }
+        if (cls == SearchResult.class) {
+            SearchResult r = new SearchResult();
+            r.success = false;
+            r.error = error;
+            r.httpStatus = status;
+            return (T) r;
+        }
+        if (cls == AuthResult.class) {
+            AuthResult r = new AuthResult();
+            r.authorized = false;
+            r.reason = error;
+            return (T) r;
+        }
+        if (cls == WhitelistRequestResult.class) {
+            WhitelistRequestResult r = new WhitelistRequestResult();
+            r.success = false;
+            r.error = error;
+            r.httpStatus = status;
+            return (T) r;
+        }
+        return null;
     }
 
     private static String normalizeBearerToken(String bearerToken) {
