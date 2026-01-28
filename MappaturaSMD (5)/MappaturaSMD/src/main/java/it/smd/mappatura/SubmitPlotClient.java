@@ -36,6 +36,8 @@ public class SubmitPlotClient {
             .build();
 
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_BASE_DELAY_MS = 500;
 
     // ====== Models ======
     public static final class AuthResult {
@@ -213,8 +215,19 @@ public class SubmitPlotClient {
         plot.addProperty("plot_id", info.plotId);
         plot.addProperty("coord_x", info.coordX);
         plot.addProperty("coord_z", info.coordZ);
+        if (info.dimension != null && !info.dimension.isBlank()) {
+            plot.addProperty("dimension", info.dimension);
+        } else if (cfg != null && cfg.dimensionDefault != null && !cfg.dimensionDefault.isBlank()) {
+            plot.addProperty("dimension", cfg.dimensionDefault);
+        }
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
+
+        String bearerToken = cfg != null ? cfg.bearerToken : null;
+        if (bearerToken == null || bearerToken.isBlank()) {
+            if (err != null) err.accept("TOKEN_MISSING");
+            return;
+        }
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
@@ -223,7 +236,7 @@ public class SubmitPlotClient {
         if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
         body.add("plot_data", plot);
 
-        postJson(url, body, SubmitResult.class, r -> {
+        postJsonWithRetry(url, body, bearerToken, SubmitResult.class, r -> {
             if (r == null) {
                 if (err != null) err.accept("NETWORK_ERROR");
                 return;
@@ -239,19 +252,54 @@ public class SubmitPlotClient {
     // ====== HTTP core ======
 
     private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
+        postJsonWithRetry(url, body, null, cls, cb, 1);
+    }
+
+    private static <T> void postJsonWithRetry(
+            String url,
+            JsonObject body,
+            String bearerToken,
+            Class<T> cls,
+            Consumer<T> cb
+    ) {
+        postJsonWithRetry(url, body, bearerToken, cls, cb, MAX_RETRIES);
+    }
+
+    private static <T> void postJsonWithRetry(
+            String url,
+            JsonObject body,
+            String bearerToken,
+            Class<T> cls,
+            Consumer<T> cb,
+            int maxAttempts
+    ) {
         // thread separato (non blocca render thread)
         Thread worker = new Thread(() -> {
             try {
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
-                        .timeout(REQ_TIMEOUT)
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-                        .build();
+                HttpResponse<String> resp = null;
+                String text = "";
+                int status = 0;
+                for (int attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+                    HttpRequest.Builder builder = HttpRequest.newBuilder()
+                            .uri(URI.create(url))
+                            .timeout(REQ_TIMEOUT)
+                            .header("Content-Type", "application/json");
+                    String authHeader = normalizeBearerToken(bearerToken);
+                    if (authHeader != null) builder.header("Authorization", authHeader);
+                    HttpRequest req = builder
+                            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                            .build();
 
-                HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-                int status = resp.statusCode();
-                String text = resp.body() == null ? "" : resp.body();
+                    resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                    status = resp.statusCode();
+                    text = resp.body() == null ? "" : resp.body();
+
+                    if (shouldRetry(status) && attempt < maxAttempts) {
+                        sleepForRetry(attempt);
+                        continue;
+                    }
+                    break;
+                }
 
                 T obj = null;
                 try {
@@ -286,6 +334,25 @@ public class SubmitPlotClient {
             f.setInt(obj, status);
         } catch (Exception ignore) {
         }
+    }
+
+    private static String normalizeBearerToken(String bearerToken) {
+        if (bearerToken == null) return null;
+        String token = bearerToken.trim();
+        if (token.isBlank()) return null;
+        if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+            return token;
+        }
+        return "Bearer " + token;
+    }
+
+    private static boolean shouldRetry(int status) {
+        return status == 429 || status >= 500;
+    }
+
+    private static void sleepForRetry(int attempt) throws InterruptedException {
+        long delay = RETRY_BASE_DELAY_MS * (1L << Math.max(0, attempt - 1));
+        Thread.sleep(delay);
     }
 
     // ====== Small UX helpers (opzionale) ======
