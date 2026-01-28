@@ -44,13 +44,15 @@ public class MappingController {
         private final Integer fallbackX;
         private final Integer fallbackZ;
         private final int attempt;
+        private final boolean priority;
         private long sentAtMs;
 
-        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt) {
+        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt, boolean priority) {
             this.requestId = requestId;
             this.fallbackX = fallbackX;
             this.fallbackZ = fallbackZ;
             this.attempt = attempt;
+            this.priority = priority;
         }
     }
 
@@ -209,8 +211,12 @@ public class MappingController {
 
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
-        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
-        queue.add(req);
+        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1, true);
+        if (queue.isEmpty()) {
+            queue.add(req);
+        } else {
+            queue.addFirst(req);
+        }
         lastChunkX = chunkX;
         lastChunkZ = chunkZ;
     }
@@ -218,7 +224,7 @@ public class MappingController {
     private void startNextIfReady(MinecraftClient client, long now, long cooldownMs) {
         if (inFlight != null) return;
         if (queue.isEmpty()) return;
-        if (now - lastCommandAtMs < cooldownMs) return;
+        if (!queue.peek().priority && now - lastCommandAtMs < cooldownMs) return;
 
         PlotRequest req = queue.poll();
         if (req == null) return;
@@ -232,7 +238,7 @@ public class MappingController {
 
     private void enqueueRetry(PlotRequest failed) {
         if (queue.size() >= MAX_QUEUE) return;
-        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1);
+        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1, false);
         queue.addFirst(retry);
         HudOverlay.showBadge("⚠️ Timeout plot info, retry " + retry.attempt + "/" + MAX_ATTEMPTS, HudOverlay.Badge.NEUTRAL);
     }
