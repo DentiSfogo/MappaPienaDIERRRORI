@@ -134,7 +134,7 @@ public class SubmitPlotClient {
      * checkAccessAsync(publishCode, cb)
      */
     public static void checkAccessAsync(String publishCode, Consumer<AuthResult> cb) {
-        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String base = getNormalizedEndpoint();
         if (base.isBlank()) {
             if (cb != null) cb.accept(null);
             return;
@@ -142,9 +142,7 @@ public class SubmitPlotClient {
         String url = deriveCheckAccessUrl(base);
 
         JsonObject body = new JsonObject();
-        body.addProperty("operator_name", getOperatorName());
-        String uuid = getOperatorUuid();
-        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        addOperatorInfo(body);
         if (publishCode != null && !publishCode.isBlank()) body.addProperty("publish_code", publishCode);
 
         postJson(url, body, AuthResult.class, cb);
@@ -158,7 +156,7 @@ public class SubmitPlotClient {
     }
 
     public static void requestWhitelistAsync(Consumer<WhitelistRequestResult> cb) {
-        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String base = getNormalizedEndpoint();
         if (base.isBlank()) {
             if (cb != null) cb.accept(null);
             return;
@@ -166,15 +164,13 @@ public class SubmitPlotClient {
         String url = deriveWhitelistRequestUrl(base);
 
         JsonObject body = new JsonObject();
-        body.addProperty("operator_name", getOperatorName());
-        String uuid = getOperatorUuid();
-        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        addOperatorInfo(body);
 
         postJson(url, body, WhitelistRequestResult.class, cb);
     }
 
     public static void searchPlotAsync(String nome, Consumer<SearchResult> cb) {
-        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String base = getNormalizedEndpoint();
         if (base.isBlank()) {
             if (cb != null) cb.accept(null);
             return;
@@ -185,9 +181,7 @@ public class SubmitPlotClient {
         String publishCode = cfg != null ? cfg.sessionCode : null;
 
         JsonObject body = new JsonObject();
-        body.addProperty("operator_name", getOperatorName());
-        String uuid = getOperatorUuid();
-        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        addOperatorInfo(body);
 
         body.addProperty("search_query", nome);
         if (publishCode != null && !publishCode.isBlank()) body.addProperty("publish_code", publishCode);
@@ -196,7 +190,7 @@ public class SubmitPlotClient {
     }
 
     public static void submitAsync(PlotInfo info, Consumer<SubmitResult> ok, Consumer<String> err) {
-        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String base = getNormalizedEndpoint();
         if (base.isBlank()) {
             if (err != null) err.accept("ENDPOINT_MISSING");
             return;
@@ -231,9 +225,7 @@ public class SubmitPlotClient {
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
-        body.addProperty("operator_name", getOperatorName());
-        String uuid = getOperatorUuid();
-        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        addOperatorInfo(body);
         body.add("plot_data", plot);
 
         postJsonWithRetry(url, body, bearerToken, SubmitResult.class, r -> {
@@ -253,6 +245,20 @@ public class SubmitPlotClient {
 
     private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
         postJsonWithRetry(url, body, null, cls, cb, 1);
+    }
+
+    private static String getNormalizedEndpoint() {
+        AppConfig cfg = ConfigManager.get();
+        if (cfg == null) return "";
+        return normalizeUrl(cfg.endpointUrl);
+    }
+
+    private static void addOperatorInfo(JsonObject body) {
+        body.addProperty("operator_name", getOperatorName());
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) {
+            body.addProperty("operator_uuid", uuid);
+        }
     }
 
     private static <T> void postJsonWithRetry(
