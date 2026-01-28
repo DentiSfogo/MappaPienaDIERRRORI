@@ -33,6 +33,8 @@ public class SubmitPlotClient {
     private static final Gson GSON = new Gson();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .version(HttpClient.Version.HTTP_1_1)
             .build();
 
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
@@ -94,6 +96,9 @@ public class SubmitPlotClient {
     public static String normalizeUrl(String raw) {
         if (raw == null) return "";
         String s = raw.trim();
+        if (!s.startsWith("http://") && !s.startsWith("https://")) {
+            s = "https://" + s;
+        }
         // compat: alcuni incollano endpoint .base44.com (non valido per questo progetto)
         // normalizziamo verso .base44.app
         if (s.contains(".base44.com")) {
@@ -326,7 +331,9 @@ public class SubmitPlotClient {
                 HttpRequest.Builder builder = HttpRequest.newBuilder()
                         .uri(URI.create(url))
                         .timeout(REQ_TIMEOUT)
-                        .header("Content-Type", "application/json");
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "MappaturaSMD/1.0");
                 HttpRequest req = builder
                         .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                         .build();
@@ -384,7 +391,9 @@ public class SubmitPlotClient {
                     HttpRequest.Builder builder = HttpRequest.newBuilder()
                             .uri(URI.create(url))
                             .timeout(REQ_TIMEOUT)
-                            .header("Content-Type", "application/json");
+                            .header("Content-Type", "application/json")
+                            .header("Accept", "application/json")
+                            .header("User-Agent", "MappaturaSMD/1.0");
                     HttpRequest req = builder
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
