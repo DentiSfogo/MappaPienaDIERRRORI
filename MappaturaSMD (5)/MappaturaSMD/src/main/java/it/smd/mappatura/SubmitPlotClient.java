@@ -11,9 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -40,7 +38,6 @@ public class SubmitPlotClient {
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_BASE_DELAY_MS = 500;
-    private static final long TOKEN_TTL_MS = Duration.ofHours(24).toMillis();
 
     // ====== Models ======
     public static final class AuthResult {
@@ -220,18 +217,12 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String authToken = resolveAuthToken(cfg);
-        if (authToken == null || authToken.isBlank()) {
-            if (err != null) err.accept("TOKEN_MISSING");
-            return;
-        }
-
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        postJsonWithRetry(url, body, authToken, SubmitResult.class, r -> {
+        postJsonWithRetry(url, body, SubmitResult.class, r -> {
             if (r == null) {
                 if (err != null) err.accept("NETWORK_ERROR");
                 return;
@@ -274,17 +265,12 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String authToken = resolveAuthToken(cfg);
-        if (authToken == null || authToken.isBlank()) {
-            return errorResult("TOKEN_MISSING");
-        }
-
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        SubmitResult result = postJsonWithRetryBlocking(url, body, authToken, SubmitResult.class, MAX_RETRIES);
+        SubmitResult result = postJsonWithRetryBlocking(url, body, SubmitResult.class, MAX_RETRIES);
         if (result == null) {
             return errorResult("NETWORK_ERROR");
         }
@@ -294,23 +280,13 @@ public class SubmitPlotClient {
     // ====== HTTP core ======
 
     private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
-        postJsonWithRetry(url, body, null, cls, cb, 1);
+        postJsonWithRetry(url, body, cls, cb, 1);
     }
 
     private static String getNormalizedEndpoint() {
         AppConfig cfg = ConfigManager.get();
         if (cfg == null) return "";
         return normalizeUrl(cfg.endpointUrl);
-    }
-
-    static String resolveAuthToken(AppConfig cfg) {
-        if (cfg != null && cfg.bearerToken != null && !cfg.bearerToken.isBlank()) {
-            return cfg.bearerToken;
-        }
-        if (cfg != null && cfg.ingestKey != null && !cfg.ingestKey.isBlank()) {
-            return cfg.ingestKey;
-        }
-        return buildOperatorToken();
     }
 
     private static void addOperatorInfo(JsonObject body) {
@@ -321,57 +297,18 @@ public class SubmitPlotClient {
         }
     }
 
-    private static String buildOperatorToken() {
-        String operatorName = getOperatorName();
-        if (operatorName == null || operatorName.isBlank() || "unknown".equalsIgnoreCase(operatorName)) {
-            return null;
-        }
-        JsonObject payload = new JsonObject();
-        payload.addProperty("operator_name", operatorName);
-        String uuid = getOperatorUuid();
-        if (uuid != null && !uuid.isBlank()) {
-            payload.addProperty("operator_uuid", uuid);
-        }
-        payload.addProperty("expires_at", System.currentTimeMillis() + TOKEN_TTL_MS);
-        String json = payload.toString();
-        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static boolean looksLikeOperatorToken(String token) {
-        String raw = token == null ? "" : token.trim();
-        if (raw.isBlank()) {
-            return false;
-        }
-        if (raw.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-            raw = raw.substring("Bearer ".length()).trim();
-        }
-        try {
-            byte[] decoded = Base64.getDecoder().decode(raw);
-            String json = new String(decoded, StandardCharsets.UTF_8);
-            JsonObject obj = GSON.fromJson(json, JsonObject.class);
-            if (obj == null) {
-                return false;
-            }
-            return obj.has("operator_name") && obj.has("expires_at");
-        } catch (IllegalArgumentException ex) {
-            return false;
-        }
-    }
-
     private static <T> void postJsonWithRetry(
             String url,
             JsonObject body,
-            String bearerToken,
             Class<T> cls,
             Consumer<T> cb
     ) {
-        postJsonWithRetry(url, body, bearerToken, cls, cb, MAX_RETRIES);
+        postJsonWithRetry(url, body, cls, cb, MAX_RETRIES);
     }
 
     private static <T> T postJsonWithRetryBlocking(
             String url,
             JsonObject body,
-            String bearerToken,
             Class<T> cls,
             int maxAttempts
     ) {
@@ -384,7 +321,6 @@ public class SubmitPlotClient {
                         .uri(URI.create(url))
                         .timeout(REQ_TIMEOUT)
                         .header("Content-Type", "application/json");
-                applyAuthHeaders(builder, bearerToken);
                 HttpRequest req = builder
                         .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                         .build();
@@ -426,7 +362,6 @@ public class SubmitPlotClient {
     private static <T> void postJsonWithRetry(
             String url,
             JsonObject body,
-            String bearerToken,
             Class<T> cls,
             Consumer<T> cb,
             int maxAttempts
@@ -442,7 +377,6 @@ public class SubmitPlotClient {
                             .uri(URI.create(url))
                             .timeout(REQ_TIMEOUT)
                             .header("Content-Type", "application/json");
-                    applyAuthHeaders(builder, bearerToken);
                     HttpRequest req = builder
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
@@ -542,28 +476,6 @@ public class SubmitPlotClient {
             return (T) r;
         }
         return null;
-    }
-
-    private static String normalizeBearerToken(String bearerToken) {
-        if (bearerToken == null) return null;
-        String token = bearerToken.trim();
-        if (token.isBlank()) return null;
-        if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-            return token;
-        }
-        return "Bearer " + token;
-    }
-
-    private static void applyAuthHeaders(HttpRequest.Builder builder, String bearerToken) {
-        AppConfig cfg = ConfigManager.get();
-        String ingestKey = cfg != null ? cfg.ingestKey : null;
-        if (ingestKey != null && !ingestKey.isBlank()) {
-            builder.header("X-SMD-KEY", ingestKey.trim());
-        }
-        String authHeader = normalizeBearerToken(bearerToken);
-        if (authHeader != null) {
-            builder.header("Authorization", authHeader);
-        }
     }
 
     private static boolean shouldRetry(int status) {
