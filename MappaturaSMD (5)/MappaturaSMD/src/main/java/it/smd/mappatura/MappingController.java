@@ -104,10 +104,12 @@ public class MappingController {
         SubmitPlotClient.submitAsync(
                 info,
                 ok -> {
-                    if (ok != null && ok) {
+                    if (ok != null && !ok.alreadyMapped) {
                         HudOverlay.show(Text.literal("✅ Plot salvato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")"));
-                    } else {
+                    } else if (ok != null && ok.alreadyMapped) {
                         HudOverlay.show(Text.literal("⚠️ Plot già presente: " + info.plotId));
+                    } else {
+                        HudOverlay.show(Text.literal("⚠️ Submit completato ma senza risposta valida."));
                     }
                 },
                 err -> {
