@@ -3,6 +3,9 @@ package it.smd.mappatura;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+
 /**
  * Controller principale della mappatura.
  *
@@ -14,10 +17,36 @@ import net.minecraft.text.Text;
  */
 public class MappingController {
 
+    private static final int MAX_QUEUE = 8;
+    private static final int MAX_ATTEMPTS = 3;
+    private static final boolean DEBUG_THROUGHPUT = false;
+    private static final long THROUGHPUT_WINDOW_MS = 60_000L;
+
     private boolean running = false;
     private final ChatPlotInfoParser parser;
-    private long lastCommandAtMs = 0L;
     private boolean missingSessionWarned = false;
+    private long lastCommandAtMs = 0L;
+    private long lastEnqueueAtMs = 0L;
+    private long requestSeq = 0L;
+    private long completedInWindow = 0L;
+    private long throughputWindowStartMs = 0L;
+    private final Deque<PlotRequest> queue = new ArrayDeque<>();
+    private PlotRequest inFlight;
+
+    private static final class PlotRequest {
+        private final long requestId;
+        private final Integer fallbackX;
+        private final Integer fallbackZ;
+        private final int attempt;
+        private long sentAtMs;
+
+        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt) {
+            this.requestId = requestId;
+            this.fallbackX = fallbackX;
+            this.fallbackZ = fallbackZ;
+            this.attempt = attempt;
+        }
+    }
 
     public MappingController() {
         this.parser = new ChatPlotInfoParser(this);
@@ -31,12 +60,21 @@ public class MappingController {
         // }
         parser.forceReset();
         missingSessionWarned = false;
+        queue.clear();
+        inFlight = null;
+        lastCommandAtMs = 0L;
+        lastEnqueueAtMs = 0L;
+        requestSeq = 0L;
+        completedInWindow = 0L;
+        throughputWindowStartMs = System.currentTimeMillis();
         running = true;
     }
 
     public void stop() {
         running = false;
         parser.forceReset();
+        queue.clear();
+        inFlight = null;
     }
 
     public void toggle() {
@@ -66,7 +104,7 @@ public class MappingController {
         if (sessionCode.isBlank()) {
             if (!missingSessionWarned) {
                 missingSessionWarned = true;
-                HudOverlay.show(Text.literal("⚠️ Inserisci un codice sessione prima di avviare la mappatura."));
+                HudOverlay.showBadge("⚠️ Inserisci un codice sessione prima di avviare la mappatura.", HudOverlay.Badge.ERROR);
             }
             return;
         }
@@ -74,16 +112,9 @@ public class MappingController {
         long now = System.currentTimeMillis();
         long cooldown = cfg != null ? cfg.commandCooldownMs : 600L;
         if (cooldown < 0) cooldown = 0;
-        if (now - lastCommandAtMs < cooldown) return;
 
-        if (!parser.isCollecting()) {
-            String cmd = cfg != null ? cfg.plotInfoCommand : "plot info";
-            sendCommand(client, cmd);
-            int fallbackX = client.player.getBlockPos().getX();
-            int fallbackZ = client.player.getBlockPos().getZ();
-            parser.beginRequest(fallbackX, fallbackZ);
-            lastCommandAtMs = now;
-        }
+        maybeEnqueueRequest(client, now, cooldown);
+        startNextIfReady(client, now, cooldown);
     }
 
     public void onChat(Text message) {
@@ -99,6 +130,16 @@ public class MappingController {
     public void onPlotInfoReady(PlotInfo info) {
         if (info == null) return;
 
+        if (inFlight != null && info.requestId != inFlight.requestId) {
+            return;
+        }
+
+        if (inFlight != null) {
+            inFlight = null;
+        }
+
+        recordThroughput();
+
         // 1) Salva in cache locale (persistente)
         PlotCacheManager.record(info);
 
@@ -107,16 +148,16 @@ public class MappingController {
                 info,
                 ok -> {
                     if (ok != null && !ok.alreadyMapped) {
-                        HudOverlay.show(Text.literal("✅ Plot salvato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")"));
+                        HudOverlay.showBadge("✅ Plot salvato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
                     } else if (ok != null && ok.alreadyMapped) {
-                        HudOverlay.show(Text.literal("⚠️ Plot già presente: " + info.plotId));
+                        HudOverlay.showBadge("⚠️ Plot già presente: " + info.plotId, HudOverlay.Badge.NEUTRAL);
                     } else {
-                        HudOverlay.show(Text.literal("⚠️ Submit completato ma senza risposta valida."));
+                        HudOverlay.showBadge("⚠️ Submit completato ma senza risposta valida.", HudOverlay.Badge.NEUTRAL);
                     }
                 },
                 err -> {
                     String e = (err == null || err.isBlank()) ? "Errore sconosciuto" : err;
-                    HudOverlay.show(Text.literal("❌ Submit fallito: " + e));
+                    HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
                 }
         );
     }
@@ -126,8 +167,16 @@ public class MappingController {
      * chiamato quando scade il timeout mentre si stava raccogliendo plot info.
      */
     public void onPlotInfoTimeout() {
-        // Hook di sicurezza: se serve, qui puoi resettare stati interni del controller
-        // (il parser si resetta già da solo).
+        if (inFlight == null) return;
+
+        PlotRequest failed = inFlight;
+        inFlight = null;
+
+        if (failed.attempt < MAX_ATTEMPTS) {
+            enqueueRetry(failed);
+        } else {
+            HudOverlay.showBadge("❌ Timeout plot info (max retry)", HudOverlay.Badge.ERROR);
+        }
     }
 
     private void sendCommand(MinecraftClient client, String command) {
@@ -145,6 +194,53 @@ public class MappingController {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc != null && mc.player != null) {
             mc.player.sendMessage(Text.literal(msg), false);
+        }
+    }
+
+    private void maybeEnqueueRequest(MinecraftClient client, long now, long debounceMs) {
+        if (client == null || client.player == null) return;
+        if (queue.size() >= MAX_QUEUE) return;
+        if (now - lastEnqueueAtMs < debounceMs) return;
+
+        int fallbackX = client.player.getBlockPos().getX();
+        int fallbackZ = client.player.getBlockPos().getZ();
+        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
+        queue.add(req);
+        lastEnqueueAtMs = now;
+    }
+
+    private void startNextIfReady(MinecraftClient client, long now, long cooldownMs) {
+        if (inFlight != null) return;
+        if (queue.isEmpty()) return;
+        if (now - lastCommandAtMs < cooldownMs) return;
+
+        PlotRequest req = queue.poll();
+        if (req == null) return;
+        inFlight = req;
+        inFlight.sentAtMs = now;
+        String cmd = ConfigManager.get() != null ? ConfigManager.get().plotInfoCommand : "plot info";
+        sendCommand(client, cmd);
+        parser.beginRequest(req.requestId, req.fallbackX, req.fallbackZ);
+        lastCommandAtMs = now;
+    }
+
+    private void enqueueRetry(PlotRequest failed) {
+        if (queue.size() >= MAX_QUEUE) return;
+        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1);
+        queue.addFirst(retry);
+        HudOverlay.showBadge("⚠️ Timeout plot info, retry " + retry.attempt + "/" + MAX_ATTEMPTS, HudOverlay.Badge.NEUTRAL);
+    }
+
+    private void recordThroughput() {
+        if (!DEBUG_THROUGHPUT) return;
+        long now = System.currentTimeMillis();
+        if (throughputWindowStartMs == 0L) throughputWindowStartMs = now;
+        completedInWindow++;
+        if (now - throughputWindowStartMs >= THROUGHPUT_WINDOW_MS) {
+            long minutes = Math.max(1, (now - throughputWindowStartMs) / 60_000L);
+            System.out.println("[SMD] Throughput: " + (completedInWindow / minutes) + " plot/min");
+            throughputWindowStartMs = now;
+            completedInWindow = 0L;
         }
     }
 }
