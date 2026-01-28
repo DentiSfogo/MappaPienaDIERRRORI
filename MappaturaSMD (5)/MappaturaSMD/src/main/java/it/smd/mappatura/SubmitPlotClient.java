@@ -38,6 +38,7 @@ public class SubmitPlotClient {
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_BASE_DELAY_MS = 500;
+    private static final String INGEST_KEY = "SMD_INGEST_9f3a8c2e71b44d9abcf20e11a7d8c6b5";
 
     // ====== Models ======
     public static final class AuthResult {
@@ -217,18 +218,12 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String bearerToken = cfg != null ? cfg.bearerToken : null;
-        if (bearerToken == null || bearerToken.isBlank()) {
-            if (err != null) err.accept("TOKEN_MISSING");
-            return;
-        }
-
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        postJsonWithRetry(url, body, bearerToken, SubmitResult.class, r -> {
+        postJsonWithRetry(url, body, INGEST_KEY, SubmitResult.class, r -> {
             if (r == null) {
                 if (err != null) err.accept("NETWORK_ERROR");
                 return;
