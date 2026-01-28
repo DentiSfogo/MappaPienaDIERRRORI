@@ -5,6 +5,8 @@ import net.minecraft.text.Text;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Controller principale della mappatura.
@@ -32,6 +34,7 @@ public class MappingController {
     private long throughputWindowStartMs = 0L;
     private final Deque<PlotRequest> queue = new ArrayDeque<>();
     private PlotRequest inFlight;
+    private final SubmitPlotQueue submitQueue;
 
     private static final class PlotRequest {
         private final long requestId;
@@ -50,6 +53,7 @@ public class MappingController {
 
     public MappingController() {
         this.parser = new ChatPlotInfoParser(this);
+        this.submitQueue = new SubmitPlotQueue();
     }
 
     public void start() {
@@ -143,23 +147,9 @@ public class MappingController {
         // 1) Salva in cache locale (persistente)
         PlotCacheManager.record(info);
 
-        // 2) Invia al backend (submitPlot)
-        SubmitPlotClient.submitAsync(
-                info,
-                ok -> {
-                    if (ok != null && !ok.alreadyMapped) {
-                        HudOverlay.showBadge("✅ Plot salvato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
-                    } else if (ok != null && ok.alreadyMapped) {
-                        HudOverlay.showBadge("⚠️ Plot già presente: " + info.plotId, HudOverlay.Badge.NEUTRAL);
-                    } else {
-                        HudOverlay.showBadge("⚠️ Submit completato ma senza risposta valida.", HudOverlay.Badge.NEUTRAL);
-                    }
-                },
-                err -> {
-                    String e = (err == null || err.isBlank()) ? "Errore sconosciuto" : err;
-                    HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
-                }
-        );
+        // 2) Enqueue push in background (istananeo sul gameplay)
+        submitQueue.enqueue(info);
+        HudOverlay.showBadge("✅ Plot salvato (in coda): " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
     }
 
     /**
@@ -241,6 +231,59 @@ public class MappingController {
             System.out.println("[SMD] Throughput: " + (completedInWindow / minutes) + " plot/min");
             throughputWindowStartMs = now;
             completedInWindow = 0L;
+        }
+    }
+
+    private void handleSubmitResult(PlotInfo info, SubmitPlotClient.SubmitResult result) {
+        if (result == null) {
+            HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR", HudOverlay.Badge.ERROR);
+            return;
+        }
+        if (!result.success) {
+            String e = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
+            HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
+            return;
+        }
+        if (result.alreadyMapped) {
+            HudOverlay.showBadge("⚠️ Plot già presente: " + info.plotId, HudOverlay.Badge.NEUTRAL);
+        }
+    }
+
+    private void dispatchToMainThread(Runnable task) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null) {
+            mc.execute(task);
+        } else {
+            task.run();
+        }
+    }
+
+    private final class SubmitPlotQueue implements Runnable {
+        private final BlockingQueue<PlotInfo> queue = new LinkedBlockingQueue<>();
+
+        private SubmitPlotQueue() {
+            Thread worker = new Thread(this, "SMD-SubmitQueue");
+            worker.setDaemon(true);
+            worker.start();
+        }
+
+        private void enqueue(PlotInfo info) {
+            if (info == null) return;
+            queue.offer(info);
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    PlotInfo info = queue.take();
+                    SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(info);
+                    dispatchToMainThread(() -> handleSubmitResult(info, result));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         }
     }
 }
