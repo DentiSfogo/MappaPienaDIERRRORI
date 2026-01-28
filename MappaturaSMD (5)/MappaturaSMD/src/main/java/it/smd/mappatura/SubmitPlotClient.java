@@ -46,6 +46,7 @@ public class SubmitPlotClient {
         public JsonObject debug;
         public String session_id;
         public String session_name;
+        public int httpStatus;
     }
 
     public static final class SubmitResult {
@@ -353,9 +354,11 @@ public class SubmitPlotClient {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return null;
+            logNetworkError(url, e);
+            return createNetworkErrorResponse(cls, e);
         } catch (Exception e) {
-            return null;
+            logNetworkError(url, e);
+            return createNetworkErrorResponse(cls, e);
         }
     }
 
@@ -416,11 +419,15 @@ public class SubmitPlotClient {
                     Thread.currentThread().interrupt();
                 }
                 if (cb != null) {
-                    dispatchToMainThread(() -> cb.accept(null));
+                    logNetworkError(url, e);
+                    T error = createNetworkErrorResponse(cls, e);
+                    dispatchToMainThread(() -> cb.accept(error));
                 }
             } catch (Exception e) {
                 if (cb != null) {
-                    dispatchToMainThread(() -> cb.accept(null));
+                    logNetworkError(url, e);
+                    T error = createNetworkErrorResponse(cls, e);
+                    dispatchToMainThread(() -> cb.accept(error));
                 }
             }
         }, "SMD-HTTP");
@@ -445,6 +452,62 @@ public class SubmitPlotClient {
         return r;
     }
 
+    private static void logNetworkError(String url, Exception e) {
+        String detail = buildNetworkErrorMessage(e);
+        System.out.println("[SMD][HTTP] Network error for " + url + ": " + detail);
+    }
+
+    private static String buildNetworkErrorMessage(Exception e) {
+        if (e == null) return "Unknown";
+        String detail = e.getClass().getSimpleName();
+        String msg = e.getMessage();
+        if (msg != null && !msg.isBlank()) {
+            detail += ": " + msg;
+        }
+        return detail;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T createNetworkErrorResponse(Class<T> cls, Exception e) {
+        String detail = buildNetworkErrorMessage(e);
+        if (cls == SubmitResult.class) {
+            SubmitResult r = new SubmitResult();
+            r.success = false;
+            r.error = "NETWORK_ERROR";
+            r.httpStatus = 0;
+            r.debug = new JsonObject();
+            r.debug.addProperty("exception", detail);
+            return (T) r;
+        }
+        if (cls == SearchResult.class) {
+            SearchResult r = new SearchResult();
+            r.success = false;
+            r.error = "NETWORK_ERROR";
+            r.httpStatus = 0;
+            r.debug = new JsonObject();
+            r.debug.addProperty("exception", detail);
+            return (T) r;
+        }
+        if (cls == AuthResult.class) {
+            AuthResult r = new AuthResult();
+            r.authorized = false;
+            r.reason = "NETWORK_ERROR";
+            r.httpStatus = 0;
+            r.debug = new JsonObject();
+            r.debug.addProperty("exception", detail);
+            return (T) r;
+        }
+        if (cls == WhitelistRequestResult.class) {
+            WhitelistRequestResult r = new WhitelistRequestResult();
+            r.success = false;
+            r.error = "NETWORK_ERROR";
+            r.message = detail;
+            r.httpStatus = 0;
+            return (T) r;
+        }
+        return null;
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> T createErrorResponse(Class<T> cls, int status) {
         String error = status > 0 ? "HTTP_" + status : "INVALID_RESPONSE";
@@ -466,6 +529,7 @@ public class SubmitPlotClient {
             AuthResult r = new AuthResult();
             r.authorized = false;
             r.reason = error;
+            r.httpStatus = status;
             return (T) r;
         }
         if (cls == WhitelistRequestResult.class) {
