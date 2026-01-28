@@ -138,7 +138,10 @@ public class PlotCacheManager {
         try {
             Path cfgDir = FabricLoader.getInstance().getConfigDir();
             Path file = cfgDir.resolve(FILE_NAME);
-            if (!Files.exists(file)) return;
+            if (!Files.exists(file)) {
+                save();
+                return;
+            }
 
             String s = Files.readString(file, StandardCharsets.UTF_8);
             Persisted p = GSON.fromJson(s, Persisted.class);
