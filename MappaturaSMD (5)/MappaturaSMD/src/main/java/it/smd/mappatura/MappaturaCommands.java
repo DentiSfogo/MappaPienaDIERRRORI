@@ -66,7 +66,14 @@ public class MappaturaCommands {
 
         SubmitPlotClient.searchPlotAsync(nome, r -> {
             MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc == null) {
+                return;
+            }
             mc.execute(() -> {
+                if (r == null) {
+                    send(Text.literal("❌ Errore: risposta nulla").formatted(Formatting.RED, Formatting.BOLD));
+                    return;
+                }
                 if (!r.success) {
                     send(Text.literal("❌ Errore: ").formatted(Formatting.RED, Formatting.BOLD)
                             .append(Text.literal(String.valueOf(r.error)).formatted(Formatting.RED)));
@@ -195,6 +202,9 @@ public class MappaturaCommands {
         send(Text.literal("⏳ checkAccess…").formatted(Formatting.GRAY));
         SubmitPlotClient.checkAccessAsync(session.isBlank() ? null : session, r -> {
             MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc == null) {
+                return;
+            }
             mc.execute(() -> {
                 if (r == null) {
                     send(Text.literal("❌ checkAccess: risposta nulla").formatted(Formatting.RED, Formatting.BOLD));

@@ -28,6 +28,7 @@ public class ConfigManager {
             if (config == null) config = AppConfig.defaults();
             // migrazioni/sicurezze
             if (config.endpointUrl == null || config.endpointUrl.isBlank()) config.endpointUrl = AppConfig.defaults().endpointUrl;
+            config.endpointUrl = SubmitPlotClient.normalizeUrl(config.endpointUrl);
             if (config.plotInfoCommand == null || config.plotInfoCommand.isBlank()) config.plotInfoCommand = AppConfig.defaults().plotInfoCommand;
             if (config.tickInterval <= 0) config.tickInterval = AppConfig.defaults().tickInterval;
             if (config.commandCooldownMs < 0) config.commandCooldownMs = AppConfig.defaults().commandCooldownMs;

@@ -93,6 +93,19 @@ public class SubmitPlotClient {
         String s = raw.trim();
         // se finisce con "/", toglilo
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        // se arriva un endpoint completo (/functions/submitPlot o simili), ricava il base
+        String[] suffixes = {
+                "/functions/submitPlot",
+                "/functions/checkAccess",
+                "/functions/searchPlot",
+                "/functions/whitelistRequest"
+        };
+        for (String suffix : suffixes) {
+            if (s.endsWith(suffix)) {
+                s = s.substring(0, s.length() - suffix.length());
+                break;
+            }
+        }
         return s;
     }
 
@@ -120,6 +133,10 @@ public class SubmitPlotClient {
      */
     public static void checkAccessAsync(String publishCode, Consumer<AuthResult> cb) {
         String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        if (base.isBlank()) {
+            if (cb != null) cb.accept(null);
+            return;
+        }
         String url = deriveCheckAccessUrl(base);
 
         JsonObject body = new JsonObject();
@@ -140,6 +157,10 @@ public class SubmitPlotClient {
 
     public static void requestWhitelistAsync(Consumer<WhitelistRequestResult> cb) {
         String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        if (base.isBlank()) {
+            if (cb != null) cb.accept(null);
+            return;
+        }
         String url = deriveWhitelistRequestUrl(base);
 
         JsonObject body = new JsonObject();
@@ -152,6 +173,10 @@ public class SubmitPlotClient {
 
     public static void searchPlotAsync(String nome, Consumer<SearchResult> cb) {
         String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        if (base.isBlank()) {
+            if (cb != null) cb.accept(null);
+            return;
+        }
         String url = deriveSearchPlotUrl(base);
 
         AppConfig cfg = ConfigManager.get();
@@ -170,6 +195,10 @@ public class SubmitPlotClient {
 
     public static void submitAsync(PlotInfo info, Consumer<SubmitResult> ok, Consumer<String> err) {
         String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        if (base.isBlank()) {
+            if (err != null) err.accept("ENDPOINT_MISSING");
+            return;
+        }
         String url = deriveSubmitPlotUrl(base);
 
         AppConfig cfg = ConfigManager.get();
@@ -182,10 +211,10 @@ public class SubmitPlotClient {
 
         JsonObject plot = new JsonObject();
         plot.addProperty("plot_id", info.plotId);
-        plot.addProperty("coord_x", info.x);
-        plot.addProperty("coord_z", info.z);
-        if (info.owner != null) plot.addProperty("proprietario", info.owner);
-        if (info.lastAccess != null) plot.addProperty("ultimo_accesso", info.lastAccess);
+        plot.addProperty("coord_x", info.coordX);
+        plot.addProperty("coord_z", info.coordZ);
+        if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
+        if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
@@ -237,6 +266,9 @@ public class SubmitPlotClient {
 
                 if (cb != null) cb.accept(obj);
             } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
                 if (cb != null) cb.accept(null);
             } catch (Exception e) {
                 if (cb != null) cb.accept(null);
