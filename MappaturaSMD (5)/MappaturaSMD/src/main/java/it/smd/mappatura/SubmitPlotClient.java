@@ -310,9 +310,6 @@ public class SubmitPlotClient {
         if (cfg != null && cfg.bearerToken != null && !cfg.bearerToken.isBlank()) {
             return cfg.bearerToken;
         }
-        if (cfg != null && cfg.ingestKey != null && !cfg.ingestKey.isBlank() && looksLikeOperatorToken(cfg.ingestKey)) {
-            return cfg.ingestKey;
-        }
         return buildOperatorToken();
     }
 
