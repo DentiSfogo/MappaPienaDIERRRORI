@@ -241,6 +241,53 @@ public class SubmitPlotClient {
         });
     }
 
+    /**
+     * Variante bloccante: usa la coda background per invii istantanei.
+     * Da NON chiamare dal render thread.
+     */
+    public static SubmitResult submitBlocking(PlotInfo info) {
+        String base = getNormalizedEndpoint();
+        if (base.isBlank()) {
+            return errorResult("ENDPOINT_MISSING");
+        }
+        String url = deriveSubmitPlotUrl(base);
+
+        AppConfig cfg = ConfigManager.get();
+        String publishCode = cfg != null ? cfg.sessionCode : null;
+
+        if (publishCode == null || publishCode.isBlank()) {
+            return errorResult("SESSION_CODE_MISSING");
+        }
+
+        JsonObject plot = new JsonObject();
+        plot.addProperty("plot_id", info.plotId);
+        plot.addProperty("coord_x", info.coordX);
+        plot.addProperty("coord_z", info.coordZ);
+        if (info.dimension != null && !info.dimension.isBlank()) {
+            plot.addProperty("dimension", info.dimension);
+        } else if (cfg != null && cfg.dimensionDefault != null && !cfg.dimensionDefault.isBlank()) {
+            plot.addProperty("dimension", cfg.dimensionDefault);
+        }
+        if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
+        if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
+
+        String bearerToken = cfg != null ? cfg.bearerToken : null;
+        if (bearerToken == null || bearerToken.isBlank()) {
+            return errorResult("TOKEN_MISSING");
+        }
+
+        JsonObject body = new JsonObject();
+        body.addProperty("publish_code", publishCode);
+        addOperatorInfo(body);
+        body.add("plot_data", plot);
+
+        SubmitResult result = postJsonWithRetryBlocking(url, body, bearerToken, SubmitResult.class, MAX_RETRIES);
+        if (result == null) {
+            return errorResult("NETWORK_ERROR");
+        }
+        return result;
+    }
+
     // ====== HTTP core ======
 
     private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
@@ -269,6 +316,58 @@ public class SubmitPlotClient {
             Consumer<T> cb
     ) {
         postJsonWithRetry(url, body, bearerToken, cls, cb, MAX_RETRIES);
+    }
+
+    private static <T> T postJsonWithRetryBlocking(
+            String url,
+            JsonObject body,
+            String bearerToken,
+            Class<T> cls,
+            int maxAttempts
+    ) {
+        try {
+            HttpResponse<String> resp = null;
+            String text = "";
+            int status = 0;
+            for (int attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+                HttpRequest.Builder builder = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(REQ_TIMEOUT)
+                        .header("Content-Type", "application/json");
+                String authHeader = normalizeBearerToken(bearerToken);
+                if (authHeader != null) builder.header("Authorization", authHeader);
+                HttpRequest req = builder
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                        .build();
+
+                resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                status = resp.statusCode();
+                text = resp.body() == null ? "" : resp.body();
+
+                if (shouldRetry(status) && attempt < maxAttempts) {
+                    sleepForRetry(attempt);
+                    continue;
+                }
+                break;
+            }
+
+            T obj = null;
+            try {
+                obj = GSON.fromJson(text, cls);
+            } catch (Exception parse) {
+                obj = null;
+            }
+
+            setHttpStatusIfPresent(obj, status);
+            return obj;
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static <T> void postJsonWithRetry(
@@ -346,6 +445,13 @@ public class SubmitPlotClient {
             f.setInt(obj, status);
         } catch (Exception ignore) {
         }
+    }
+
+    private static SubmitResult errorResult(String error) {
+        SubmitResult r = new SubmitResult();
+        r.success = false;
+        r.error = error;
+        return r;
     }
 
     private static String normalizeBearerToken(String bearerToken) {
