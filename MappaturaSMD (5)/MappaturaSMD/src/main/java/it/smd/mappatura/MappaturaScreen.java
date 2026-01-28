@@ -62,6 +62,30 @@ public class MappaturaScreen extends Screen {
                     });
                 }).dimensions(x, y + 90, fieldW, 20).build();
         addDrawableChild(saveTestBtn);
+
+        ButtonWidget toggleBtn = ButtonWidget.builder(
+                Text.literal(controller.isRunning() ? "Ferma mappatura" : "Avvia mappatura")
+                        .formatted(controller.isRunning() ? Formatting.RED : Formatting.GREEN),
+                btn -> {
+                    cfg.sessionCode = sessionField.getText().trim();
+                    ConfigManager.save();
+
+                    if (cfg.sessionCode == null || cfg.sessionCode.isBlank()) {
+                        HudOverlay.show(Text.literal("⚠ Inserisci un codice sessione prima di avviare."));
+                        return;
+                    }
+
+                    if (controller.isRunning()) {
+                        controller.stop();
+                        btn.setMessage(Text.literal("Avvia mappatura").formatted(Formatting.GREEN));
+                        HudOverlay.show(Text.literal("■ Mappatura fermata"));
+                    } else {
+                        controller.start();
+                        btn.setMessage(Text.literal("Ferma mappatura").formatted(Formatting.RED));
+                        HudOverlay.show(Text.literal("▶ Mappatura avviata"));
+                    }
+                }).dimensions(x, y + 120, fieldW, 20).build();
+        addDrawableChild(toggleBtn);
     }
 
     @Override
