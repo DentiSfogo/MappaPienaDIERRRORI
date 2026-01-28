@@ -240,7 +240,7 @@ public class SubmitPlotClient {
 
     private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
         // thread separato (non blocca render thread)
-        new Thread(() -> {
+        Thread worker = new Thread(() -> {
             try {
                 HttpRequest req = HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -273,7 +273,9 @@ public class SubmitPlotClient {
             } catch (Exception e) {
                 if (cb != null) cb.accept(null);
             }
-        }, "SMD-HTTP").start();
+        }, "SMD-HTTP");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private static void setHttpStatusIfPresent(Object obj, int status) {

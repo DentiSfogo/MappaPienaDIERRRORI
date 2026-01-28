@@ -15,6 +15,13 @@ import net.minecraft.text.Text;
 public class MappingController {
 
     private boolean running = false;
+    private final ChatPlotInfoParser parser;
+    private long lastCommandAtMs = 0L;
+    private boolean missingSessionWarned = false;
+
+    public MappingController() {
+        this.parser = new ChatPlotInfoParser(this);
+    }
 
     public void start() {
         // Se vuoi bloccare la mappatura quando non whitelistato, sblocca queste righe:
@@ -22,12 +29,14 @@ public class MappingController {
         //     sendChat("§cNon sei whitelistato. Usa /richiestawhitelist e poi /mappatura refresh");
         //     return;
         // }
-
+        parser.forceReset();
+        missingSessionWarned = false;
         running = true;
     }
 
     public void stop() {
         running = false;
+        parser.forceReset();
     }
 
     public void toggle() {
@@ -41,12 +50,44 @@ public class MappingController {
 
     public void onTick(MinecraftClient client) {
         if (!running) return;
-        // Logica mapping (lasciata invariata/da integrare nel tuo progetto)
+        if (client == null) return;
+
+        TickGate.INSTANCE.tick();
+
+        AppConfig cfg = ConfigManager.get();
+        parser.tick(cfg != null ? cfg.parserTimeoutMs : 0L);
+
+        int interval = cfg != null ? cfg.tickInterval : 1;
+        if (!TickGate.INSTANCE.shouldRun(interval)) return;
+
+        if (client.player == null || client.getNetworkHandler() == null) return;
+
+        String sessionCode = cfg != null && cfg.sessionCode != null ? cfg.sessionCode.trim() : "";
+        if (sessionCode.isBlank()) {
+            if (!missingSessionWarned) {
+                missingSessionWarned = true;
+                HudOverlay.show(Text.literal("⚠️ Inserisci un codice sessione prima di avviare la mappatura."));
+            }
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long cooldown = cfg != null ? cfg.commandCooldownMs : 600L;
+        if (cooldown < 0) cooldown = 0;
+        if (now - lastCommandAtMs < cooldown) return;
+
+        if (!parser.isCollecting()) {
+            String cmd = cfg != null ? cfg.plotInfoCommand : "plot info";
+            sendCommand(client, cmd);
+            parser.beginRequest();
+            lastCommandAtMs = now;
+        }
     }
 
     public void onChat(Text message) {
         if (!running) return;
-        // Logica parsing chat (lasciata invariata/da integrare nel tuo progetto)
+        if (message == null) return;
+        parser.onChatLine(message.getString());
     }
 
     /**
@@ -83,6 +124,17 @@ public class MappingController {
     public void onPlotInfoTimeout() {
         // Hook di sicurezza: se serve, qui puoi resettare stati interni del controller
         // (il parser si resetta già da solo).
+    }
+
+    private void sendCommand(MinecraftClient client, String command) {
+        if (client == null || client.getNetworkHandler() == null) return;
+        if (command == null || command.isBlank()) return;
+
+        String cmd = command.trim();
+        if (cmd.startsWith("/")) cmd = cmd.substring(1);
+        if (cmd.isBlank()) return;
+
+        client.getNetworkHandler().sendChatCommand(cmd);
     }
 
     private void sendChat(String msg) {

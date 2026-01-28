@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 public class ChatPlotInfoParser {
 
     // Debug: stampa righe utili in console
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 
     /**
      * In molti server l'output di /plot info cambia (prefix, lingua, formati).
@@ -41,7 +41,7 @@ public class ChatPlotInfoParser {
             Pattern.CASE_INSENSITIVE
     );
 
-    private static final long SOFT_TIMEOUT_MS = 5000;
+    private static final long DEFAULT_TIMEOUT_MS = 5000;
 
     private final MappingController controller;
 
@@ -133,11 +133,12 @@ public class ChatPlotInfoParser {
         emitIfPossible(false);
     }
 
-    public void tick() {
+    public void tick(long timeoutMs) {
         if (!collecting) return;
 
         long now = System.currentTimeMillis();
-        if (now - startedAtMs > SOFT_TIMEOUT_MS) {
+        long effectiveTimeout = timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+        if (now - startedAtMs > effectiveTimeout) {
             if (DEBUG) System.out.println("[SMD][PARSER] TIMEOUT soft -> emit finale se possibile");
             emitIfPossible(true);
             resetInternal();

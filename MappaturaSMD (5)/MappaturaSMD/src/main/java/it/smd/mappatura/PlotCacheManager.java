@@ -67,6 +67,7 @@ public class PlotCacheManager {
 
         List<Entry> list = BY_OWNER.computeIfAbsent(key, k -> new ArrayList<>());
 
+        list.removeIf(Objects::isNull);
         for (Entry e : list) {
             if (e != null && Objects.equals(e.plotId, plotId)) return;
         }
@@ -93,6 +94,10 @@ public class PlotCacheManager {
         List<String> out = new ArrayList<>();
         for (List<Entry> list : BY_OWNER.values()) {
             if (list != null && !list.isEmpty()) {
+                list.removeIf(Objects::isNull);
+                if (list.isEmpty()) {
+                    continue;
+                }
                 String owner = list.get(0).owner;
                 if (owner != null && !owner.isBlank()) out.add(owner);
             }
