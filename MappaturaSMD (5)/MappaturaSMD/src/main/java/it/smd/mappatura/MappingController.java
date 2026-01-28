@@ -203,15 +203,12 @@ public class MappingController {
     private void maybeEnqueueRequest(MinecraftClient client, long now, long debounceMs) {
         if (client == null || client.player == null) return;
         if (queue.size() >= MAX_QUEUE) return;
-        if (now - lastEnqueueAtMs < debounceMs) return;
 
         int chunkX = client.player.getChunkPos().x;
         int chunkZ = client.player.getChunkPos().z;
-        if (lastChunkX != null && lastChunkZ != null) {
-            if (chunkX == lastChunkX && chunkZ == lastChunkZ) {
-                return;
-            }
-        }
+        boolean chunkChanged = lastChunkX == null || lastChunkZ == null || chunkX != lastChunkX || chunkZ != lastChunkZ;
+        boolean debounceElapsed = now - lastEnqueueAtMs >= debounceMs;
+        if (!chunkChanged && !debounceElapsed) return;
 
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
