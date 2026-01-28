@@ -44,13 +44,15 @@ public class MappingController {
         private final Integer fallbackX;
         private final Integer fallbackZ;
         private final int attempt;
+        private final boolean priority;
         private long sentAtMs;
 
-        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt) {
+        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt, boolean priority) {
             this.requestId = requestId;
             this.fallbackX = fallbackX;
             this.fallbackZ = fallbackZ;
             this.attempt = attempt;
+            this.priority = priority;
         }
     }
 
@@ -123,8 +125,10 @@ public class MappingController {
         long cooldown = cfg != null ? cfg.commandCooldownMs : 600L;
         if (cooldown < 0) cooldown = 0;
 
-        maybeEnqueueRequest(client);
-        startNextIfReady(client, now, cooldown);
+        boolean sentImmediate = maybeStartImmediateRequest(client, now);
+        if (!sentImmediate) {
+            startNextIfReady(client, now, cooldown);
+        }
     }
 
     public void onChat(Text message) {
@@ -198,27 +202,38 @@ public class MappingController {
         }
     }
 
-    private void maybeEnqueueRequest(MinecraftClient client) {
-        if (client == null || client.player == null) return;
-        if (queue.size() >= MAX_QUEUE) return;
+    private boolean maybeStartImmediateRequest(MinecraftClient client, long now) {
+        if (client == null || client.player == null) return false;
 
         int chunkX = client.player.getChunkPos().x;
         int chunkZ = client.player.getChunkPos().z;
         boolean chunkChanged = lastChunkX == null || lastChunkZ == null || chunkX != lastChunkX || chunkZ != lastChunkZ;
-        if (!chunkChanged) return;
+        if (!chunkChanged) return false;
 
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
-        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
-        queue.add(req);
         lastChunkX = chunkX;
         lastChunkZ = chunkZ;
+        if (inFlight == null) {
+            PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1, true);
+            inFlight = req;
+            inFlight.sentAtMs = now;
+            String cmd = ConfigManager.get() != null ? ConfigManager.get().plotInfoCommand : "plot info";
+            sendCommand(client, cmd);
+            parser.beginRequest(req.requestId, req.fallbackX, req.fallbackZ);
+            lastCommandAtMs = now;
+            return true;
+        }
+        if (queue.size() >= MAX_QUEUE) return false;
+        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1, true);
+        queue.addFirst(req);
+        return false;
     }
 
     private void startNextIfReady(MinecraftClient client, long now, long cooldownMs) {
         if (inFlight != null) return;
         if (queue.isEmpty()) return;
-        if (now - lastCommandAtMs < cooldownMs) return;
+        if (!queue.peek().priority && now - lastCommandAtMs < cooldownMs) return;
 
         PlotRequest req = queue.poll();
         if (req == null) return;
@@ -232,7 +247,7 @@ public class MappingController {
 
     private void enqueueRetry(PlotRequest failed) {
         if (queue.size() >= MAX_QUEUE) return;
-        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1);
+        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1, false);
         queue.addFirst(retry);
         HudOverlay.showBadge("⚠️ Timeout plot info, retry " + retry.attempt + "/" + MAX_ATTEMPTS, HudOverlay.Badge.NEUTRAL);
     }
