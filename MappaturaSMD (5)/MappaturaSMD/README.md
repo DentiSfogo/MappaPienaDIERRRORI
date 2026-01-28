@@ -15,10 +15,9 @@ Jar in `build/libs/`.
 
 ### Nel pannello
 1) Inserisci **Codice sessione**
-2) Inserisci **Bearer token** (submitPlot)
-3) Premi **Salva**
-4) Premi **Avvia**
+2) Premi **Salva**
+3) Premi **Avvia**
 
-La mod salva tutto in `config/mappaturasmd.json` automaticamente (non serve modificarlo a mano).
+La mod salva tutto in `config/mappaturasmd.json` automaticamente. Il token segreto per `submitPlot` sta nel config (chiave `ingestKey` o `bearerToken`) e non viene richiesto nella GUI.
 
 Nota: La verifica “sessione attiva” avviene al primo invio: se il codice è errato/non attivo vedrai HUD `Sessione non attiva o codice errato`.

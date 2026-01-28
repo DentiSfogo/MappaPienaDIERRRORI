@@ -217,8 +217,8 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String bearerToken = cfg != null ? cfg.bearerToken : null;
-        if (bearerToken == null || bearerToken.isBlank()) {
+        String authToken = resolveAuthToken(cfg);
+        if (authToken == null) {
             if (err != null) err.accept("TOKEN_MISSING");
             return;
         }
@@ -228,7 +228,7 @@ public class SubmitPlotClient {
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        postJsonWithRetry(url, body, bearerToken, SubmitResult.class, r -> {
+        postJsonWithRetry(url, body, authToken, SubmitResult.class, r -> {
             if (r == null) {
                 if (err != null) err.accept("NETWORK_ERROR");
                 return;
@@ -271,8 +271,8 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String bearerToken = cfg != null ? cfg.bearerToken : null;
-        if (bearerToken == null || bearerToken.isBlank()) {
+        String authToken = resolveAuthToken(cfg);
+        if (authToken == null) {
             return errorResult("TOKEN_MISSING");
         }
 
@@ -281,7 +281,7 @@ public class SubmitPlotClient {
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        SubmitResult result = postJsonWithRetryBlocking(url, body, bearerToken, SubmitResult.class, MAX_RETRIES);
+        SubmitResult result = postJsonWithRetryBlocking(url, body, authToken, SubmitResult.class, MAX_RETRIES);
         if (result == null) {
             return errorResult("NETWORK_ERROR");
         }
@@ -298,6 +298,17 @@ public class SubmitPlotClient {
         AppConfig cfg = ConfigManager.get();
         if (cfg == null) return "";
         return normalizeUrl(cfg.endpointUrl);
+    }
+
+    static String resolveAuthToken(AppConfig cfg) {
+        if (cfg == null) return null;
+        if (cfg.ingestKey != null && !cfg.ingestKey.isBlank()) {
+            return cfg.ingestKey;
+        }
+        if (cfg.bearerToken != null && !cfg.bearerToken.isBlank()) {
+            return cfg.bearerToken;
+        }
+        return null;
     }
 
     private static void addOperatorInfo(JsonObject body) {
