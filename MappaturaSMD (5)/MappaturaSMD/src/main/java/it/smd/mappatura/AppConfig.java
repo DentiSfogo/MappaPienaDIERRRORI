@@ -3,7 +3,7 @@ package it.smd.mappatura;
 public class AppConfig {
     public String endpointUrl;
 
-    // NON più richiesto all'operatore (key interna nel client). Tenuto solo per compatibilità.
+    // Campo legacy (compatibilità): il backend ora usa token Bearer generati dal client.
     public String ingestKey;
 
     // Token legacy: non esposto in GUI, solo config.
@@ -30,7 +30,7 @@ public class AppConfig {
     public static AppConfig defaults() {
         AppConfig c = new AppConfig();
         c.endpointUrl = "https://mappatura-smd-8dad3f3c.base44.com";
-        c.ingestKey = "SMD_INGEST_9f3a8c2e71b44d9abcf20e11a7d8c6b5"; // non usato in GUI
+        c.ingestKey = "";
         c.bearerToken = "";
         c.sessionCode = "";
         c.autoStart = false;
