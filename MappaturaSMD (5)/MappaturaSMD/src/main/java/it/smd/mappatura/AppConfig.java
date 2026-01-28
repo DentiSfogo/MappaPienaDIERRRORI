@@ -6,6 +6,7 @@ public class AppConfig {
     // NON più richiesto all'operatore (key interna nel client). Tenuto solo per compatibilità.
     public String ingestKey;
 
+    // Token legacy: non esposto in GUI, solo config.
     public String bearerToken;
 
     public String sessionCode;

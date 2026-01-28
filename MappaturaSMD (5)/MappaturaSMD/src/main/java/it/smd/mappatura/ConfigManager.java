@@ -34,6 +34,7 @@ public class ConfigManager {
             if (config.commandCooldownMs < 0) config.commandCooldownMs = AppConfig.defaults().commandCooldownMs;
             if (config.parserTimeoutMs < 1000) config.parserTimeoutMs = AppConfig.defaults().parserTimeoutMs;
             if (config.dimensionDefault == null || config.dimensionDefault.isBlank()) config.dimensionDefault = AppConfig.defaults().dimensionDefault;
+            if (config.ingestKey == null) config.ingestKey = AppConfig.defaults().ingestKey;
             if (config.bearerToken == null) config.bearerToken = AppConfig.defaults().bearerToken;
         } catch (Exception e) {
             config = AppConfig.defaults();

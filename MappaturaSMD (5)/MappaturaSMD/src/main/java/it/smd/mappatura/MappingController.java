@@ -264,6 +264,10 @@ public class MappingController {
         }
         if (!result.success) {
             String e = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
+            if ("TOKEN_MISSING".equals(e)) {
+                HudOverlay.showBadge("❌ Submit fallito: secret key mancante nel config", HudOverlay.Badge.ERROR);
+                return;
+            }
             HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
             return;
         }
@@ -290,10 +294,10 @@ public class MappingController {
             }
             return false;
         }
-        String token = cfg != null ? cfg.bearerToken : null;
-        if (token == null || token.isBlank()) {
+        String token = SubmitPlotClient.resolveAuthToken(cfg);
+        if (token == null) {
             if (showHud) {
-                HudOverlay.showBadge("❌ Bearer token mancante", HudOverlay.Badge.ERROR);
+                HudOverlay.showBadge("❌ Secret key mancante nel config", HudOverlay.Badge.ERROR);
             }
             return false;
         }
