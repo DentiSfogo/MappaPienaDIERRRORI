@@ -11,7 +11,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -38,6 +40,7 @@ public class SubmitPlotClient {
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_BASE_DELAY_MS = 500;
+    private static final long TOKEN_TTL_MS = Duration.ofHours(24).toMillis();
 
     // ====== Models ======
     public static final class AuthResult {
@@ -221,6 +224,10 @@ public class SubmitPlotClient {
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
         String authToken = resolveAuthToken(cfg);
+        if (authToken == null || authToken.isBlank()) {
+            if (err != null) err.accept("TOKEN_MISSING");
+            return;
+        }
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
@@ -271,6 +278,9 @@ public class SubmitPlotClient {
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
         String authToken = resolveAuthToken(cfg);
+        if (authToken == null || authToken.isBlank()) {
+            return errorResult("TOKEN_MISSING");
+        }
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
@@ -297,14 +307,13 @@ public class SubmitPlotClient {
     }
 
     static String resolveAuthToken(AppConfig cfg) {
-        if (cfg == null) return null;
-        if (cfg.ingestKey != null && !cfg.ingestKey.isBlank()) {
-            return cfg.ingestKey;
-        }
-        if (cfg.bearerToken != null && !cfg.bearerToken.isBlank()) {
+        if (cfg != null && cfg.bearerToken != null && !cfg.bearerToken.isBlank()) {
             return cfg.bearerToken;
         }
-        return null;
+        if (cfg != null && cfg.ingestKey != null && !cfg.ingestKey.isBlank() && looksLikeOperatorToken(cfg.ingestKey)) {
+            return cfg.ingestKey;
+        }
+        return buildOperatorToken();
     }
 
     private static void addOperatorInfo(JsonObject body) {
@@ -312,6 +321,43 @@ public class SubmitPlotClient {
         String uuid = getOperatorUuid();
         if (uuid != null && !uuid.isBlank()) {
             body.addProperty("operator_uuid", uuid);
+        }
+    }
+
+    private static String buildOperatorToken() {
+        String operatorName = getOperatorName();
+        if (operatorName == null || operatorName.isBlank() || "unknown".equalsIgnoreCase(operatorName)) {
+            return null;
+        }
+        JsonObject payload = new JsonObject();
+        payload.addProperty("operator_name", operatorName);
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) {
+            payload.addProperty("operator_uuid", uuid);
+        }
+        payload.addProperty("expires_at", System.currentTimeMillis() + TOKEN_TTL_MS);
+        String json = payload.toString();
+        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean looksLikeOperatorToken(String token) {
+        String raw = token == null ? "" : token.trim();
+        if (raw.isBlank()) {
+            return false;
+        }
+        if (raw.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+            raw = raw.substring("Bearer ".length()).trim();
+        }
+        try {
+            byte[] decoded = Base64.getDecoder().decode(raw);
+            String json = new String(decoded, StandardCharsets.UTF_8);
+            JsonObject obj = GSON.fromJson(json, JsonObject.class);
+            if (obj == null) {
+                return false;
+            }
+            return obj.has("operator_name") && obj.has("expires_at");
+        } catch (IllegalArgumentException ex) {
+            return false;
         }
     }
 
