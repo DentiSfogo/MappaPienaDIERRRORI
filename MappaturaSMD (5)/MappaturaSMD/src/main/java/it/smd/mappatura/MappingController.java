@@ -34,6 +34,8 @@ public class MappingController {
     private long requestSeq = 0L;
     private long completedInWindow = 0L;
     private long throughputWindowStartMs = 0L;
+    private Integer lastChunkX = null;
+    private Integer lastChunkZ = null;
     private final Deque<PlotRequest> queue = new ArrayDeque<>();
     private PlotRequest inFlight;
     private final SubmitPlotQueue submitQueue;
@@ -73,6 +75,8 @@ public class MappingController {
         requestSeq = 0L;
         completedInWindow = 0L;
         throughputWindowStartMs = System.currentTimeMillis();
+        lastChunkX = null;
+        lastChunkZ = null;
         running = true;
     }
 
@@ -81,6 +85,8 @@ public class MappingController {
         parser.forceReset();
         queue.clear();
         inFlight = null;
+        lastChunkX = null;
+        lastChunkZ = null;
     }
 
     public void toggle() {
@@ -199,11 +205,21 @@ public class MappingController {
         if (queue.size() >= MAX_QUEUE) return;
         if (now - lastEnqueueAtMs < debounceMs) return;
 
+        int chunkX = client.player.getChunkPos().x;
+        int chunkZ = client.player.getChunkPos().z;
+        if (lastChunkX != null && lastChunkZ != null) {
+            if (chunkX == lastChunkX && chunkZ == lastChunkZ) {
+                return;
+            }
+        }
+
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
         PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
         queue.add(req);
         lastEnqueueAtMs = now;
+        lastChunkX = chunkX;
+        lastChunkZ = chunkZ;
     }
 
     private void startNextIfReady(MinecraftClient client, long now, long cooldownMs) {
