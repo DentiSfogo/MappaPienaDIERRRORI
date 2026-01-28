@@ -15,9 +15,8 @@ Jar in `build/libs/`.
 
 ### Nel pannello
 1) Inserisci **Codice sessione**
-2) Inserisci **Bearer token** (submitPlot)
-3) Premi **Salva**
-4) Premi **Avvia**
+2) Premi **Salva**
+3) Premi **Avvia**
 
 La mod salva tutto in `config/mappaturasmd.json` automaticamente (non serve modificarlo a mano).
 

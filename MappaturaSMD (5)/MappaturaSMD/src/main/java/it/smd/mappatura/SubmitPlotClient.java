@@ -217,18 +217,14 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String bearerToken = cfg != null ? cfg.bearerToken : null;
-        if (bearerToken == null || bearerToken.isBlank()) {
-            if (err != null) err.accept("TOKEN_MISSING");
-            return;
-        }
+        String authToken = resolveAuthToken(cfg);
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        postJsonWithRetry(url, body, bearerToken, SubmitResult.class, r -> {
+        postJsonWithRetry(url, body, authToken, SubmitResult.class, r -> {
             if (r == null) {
                 if (err != null) err.accept("NETWORK_ERROR");
                 return;
@@ -271,17 +267,14 @@ public class SubmitPlotClient {
         if (info.proprietario != null) plot.addProperty("proprietario", info.proprietario);
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
-        String bearerToken = cfg != null ? cfg.bearerToken : null;
-        if (bearerToken == null || bearerToken.isBlank()) {
-            return errorResult("TOKEN_MISSING");
-        }
+        String authToken = resolveAuthToken(cfg);
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
         addOperatorInfo(body);
         body.add("plot_data", plot);
 
-        SubmitResult result = postJsonWithRetryBlocking(url, body, bearerToken, SubmitResult.class, MAX_RETRIES);
+        SubmitResult result = postJsonWithRetryBlocking(url, body, authToken, SubmitResult.class, MAX_RETRIES);
         if (result == null) {
             return errorResult("NETWORK_ERROR");
         }
@@ -504,6 +497,13 @@ public class SubmitPlotClient {
             return token;
         }
         return "Bearer " + token;
+    }
+
+    private static String resolveAuthToken(AppConfig cfg) {
+        if (cfg == null) return null;
+        if (cfg.bearerToken != null && !cfg.bearerToken.isBlank()) return cfg.bearerToken;
+        if (cfg.ingestKey != null && !cfg.ingestKey.isBlank()) return cfg.ingestKey;
+        return null;
     }
 
     private static boolean shouldRetry(int status) {

@@ -29,7 +29,7 @@ public class AppConfig {
     public static AppConfig defaults() {
         AppConfig c = new AppConfig();
         c.endpointUrl = "https://mappatura-smd-8dad3f3c.base44.app";
-        c.ingestKey = ""; // non usato in GUI
+        c.ingestKey = "SMD_INGEST_9f3a8c2e71b44d9abcf20e11a7d8c6b5"; // key interna
         c.bearerToken = "";
         c.sessionCode = "";
         c.autoStart = false;

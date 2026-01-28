@@ -290,13 +290,6 @@ public class MappingController {
             }
             return false;
         }
-        String token = cfg != null ? cfg.bearerToken : null;
-        if (token == null || token.isBlank()) {
-            if (showHud) {
-                HudOverlay.showBadge("❌ Bearer token mancante", HudOverlay.Badge.ERROR);
-            }
-            return false;
-        }
         return true;
     }
 
