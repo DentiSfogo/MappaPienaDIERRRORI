@@ -96,9 +96,6 @@ public class SubmitPlotClient {
     public static String normalizeUrl(String raw) {
         if (raw == null) return "";
         String s = raw.trim();
-        if (s.contains(".base44.app")) {
-            s = s.replace(".base44.app", ".base44.com");
-        }
         // se finisce con "/", toglilo
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
         // se arriva un endpoint completo (/functions/submitPlot o simili), ricava il base
@@ -387,8 +384,7 @@ public class SubmitPlotClient {
                         .uri(URI.create(url))
                         .timeout(REQ_TIMEOUT)
                         .header("Content-Type", "application/json");
-                String authHeader = normalizeBearerToken(bearerToken);
-                if (authHeader != null) builder.header("Authorization", authHeader);
+                applyAuthHeaders(builder, bearerToken);
                 HttpRequest req = builder
                         .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                         .build();
@@ -446,8 +442,7 @@ public class SubmitPlotClient {
                             .uri(URI.create(url))
                             .timeout(REQ_TIMEOUT)
                             .header("Content-Type", "application/json");
-                    String authHeader = normalizeBearerToken(bearerToken);
-                    if (authHeader != null) builder.header("Authorization", authHeader);
+                    applyAuthHeaders(builder, bearerToken);
                     HttpRequest req = builder
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
@@ -557,6 +552,18 @@ public class SubmitPlotClient {
             return token;
         }
         return "Bearer " + token;
+    }
+
+    private static void applyAuthHeaders(HttpRequest.Builder builder, String bearerToken) {
+        AppConfig cfg = ConfigManager.get();
+        String ingestKey = cfg != null ? cfg.ingestKey : null;
+        if (ingestKey != null && !ingestKey.isBlank()) {
+            builder.header("X-SMD-KEY", ingestKey.trim());
+        }
+        String authHeader = normalizeBearerToken(bearerToken);
+        if (authHeader != null) {
+            builder.header("Authorization", authHeader);
+        }
     }
 
     private static boolean shouldRetry(int status) {
