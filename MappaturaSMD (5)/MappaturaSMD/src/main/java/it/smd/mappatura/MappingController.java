@@ -23,6 +23,8 @@ public class MappingController {
     private static final int MAX_ATTEMPTS = 3;
     private static final boolean DEBUG_THROUGHPUT = false;
     private static final long THROUGHPUT_WINDOW_MS = 60_000L;
+    private static final int SUBMIT_MAX_ATTEMPTS = 5;
+    private static final long SUBMIT_RETRY_BASE_DELAY_MS = 750L;
 
     private boolean running = false;
     private final ChatPlotInfoParser parser;
@@ -148,8 +150,11 @@ public class MappingController {
         PlotCacheManager.record(info);
 
         // 2) Enqueue push in background (istananeo sul gameplay)
-        submitQueue.enqueue(info);
-        HudOverlay.showBadge("✅ Plot salvato (in coda): " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
+        if (!canSubmitNow()) {
+            return;
+        }
+        submitQueue.enqueue(new SubmitTask(info));
+        HudOverlay.showBadge("⏱️ Plot in coda: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.NEUTRAL);
     }
 
     /**
@@ -246,7 +251,29 @@ public class MappingController {
         }
         if (result.alreadyMapped) {
             HudOverlay.showBadge("⚠️ Plot già presente: " + info.plotId, HudOverlay.Badge.NEUTRAL);
+            return;
         }
+        HudOverlay.showBadge("✅ Plot inviato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
+    }
+
+    private boolean canSubmitNow() {
+        AppConfig cfg = ConfigManager.get();
+        String endpoint = cfg != null ? SubmitPlotClient.normalizeUrl(cfg.endpointUrl) : "";
+        if (endpoint.isBlank()) {
+            HudOverlay.showBadge("❌ Endpoint mancante", HudOverlay.Badge.ERROR);
+            return false;
+        }
+        String sessionCode = cfg != null ? cfg.sessionCode : null;
+        if (sessionCode == null || sessionCode.isBlank()) {
+            HudOverlay.showBadge("❌ Codice sessione mancante", HudOverlay.Badge.ERROR);
+            return false;
+        }
+        String token = cfg != null ? cfg.bearerToken : null;
+        if (token == null || token.isBlank()) {
+            HudOverlay.showBadge("❌ Bearer token mancante", HudOverlay.Badge.ERROR);
+            return false;
+        }
+        return true;
     }
 
     private void dispatchToMainThread(Runnable task) {
@@ -258,8 +285,18 @@ public class MappingController {
         }
     }
 
+    private static final class SubmitTask {
+        private final PlotInfo info;
+        private int attempt;
+
+        private SubmitTask(PlotInfo info) {
+            this.info = info;
+            this.attempt = 1;
+        }
+    }
+
     private final class SubmitPlotQueue implements Runnable {
-        private final BlockingQueue<PlotInfo> queue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<SubmitTask> queue = new LinkedBlockingQueue<>();
 
         private SubmitPlotQueue() {
             Thread worker = new Thread(this, "SMD-SubmitQueue");
@@ -267,23 +304,41 @@ public class MappingController {
             worker.start();
         }
 
-        private void enqueue(PlotInfo info) {
-            if (info == null) return;
-            queue.offer(info);
+        private void enqueue(SubmitTask task) {
+            if (task == null || task.info == null) return;
+            queue.offer(task);
         }
 
         @Override
         public void run() {
             while (true) {
                 try {
-                    PlotInfo info = queue.take();
-                    SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(info);
-                    dispatchToMainThread(() -> handleSubmitResult(info, result));
+                    SubmitTask task = queue.take();
+                    handleSubmitTask(task);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return;
                 }
             }
+        }
+
+        private void handleSubmitTask(SubmitTask task) throws InterruptedException {
+            SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(task.info);
+            if (shouldRetry(result) && task.attempt < SUBMIT_MAX_ATTEMPTS) {
+                long delay = SUBMIT_RETRY_BASE_DELAY_MS * (1L << Math.max(0, task.attempt - 1));
+                Thread.sleep(delay);
+                task.attempt++;
+                queue.offer(task);
+                return;
+            }
+            dispatchToMainThread(() -> handleSubmitResult(task.info, result));
+        }
+
+        private boolean shouldRetry(SubmitPlotClient.SubmitResult result) {
+            if (result == null) return true;
+            if (result.success) return false;
+            if ("NETWORK_ERROR".equals(result.error)) return true;
+            return result.httpStatus == 429 || result.httpStatus >= 500;
         }
     }
 }
