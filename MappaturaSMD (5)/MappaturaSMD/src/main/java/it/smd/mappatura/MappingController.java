@@ -30,7 +30,6 @@ public class MappingController {
     private final ChatPlotInfoParser parser;
     private boolean missingSessionWarned = false;
     private long lastCommandAtMs = 0L;
-    private long lastEnqueueAtMs = 0L;
     private long requestSeq = 0L;
     private long completedInWindow = 0L;
     private long throughputWindowStartMs = 0L;
@@ -71,7 +70,6 @@ public class MappingController {
         queue.clear();
         inFlight = null;
         lastCommandAtMs = 0L;
-        lastEnqueueAtMs = 0L;
         requestSeq = 0L;
         completedInWindow = 0L;
         throughputWindowStartMs = System.currentTimeMillis();
@@ -125,7 +123,7 @@ public class MappingController {
         long cooldown = cfg != null ? cfg.commandCooldownMs : 600L;
         if (cooldown < 0) cooldown = 0;
 
-        maybeEnqueueRequest(client, now, cooldown);
+        maybeEnqueueRequest(client);
         startNextIfReady(client, now, cooldown);
     }
 
@@ -200,21 +198,19 @@ public class MappingController {
         }
     }
 
-    private void maybeEnqueueRequest(MinecraftClient client, long now, long debounceMs) {
+    private void maybeEnqueueRequest(MinecraftClient client) {
         if (client == null || client.player == null) return;
         if (queue.size() >= MAX_QUEUE) return;
 
         int chunkX = client.player.getChunkPos().x;
         int chunkZ = client.player.getChunkPos().z;
         boolean chunkChanged = lastChunkX == null || lastChunkZ == null || chunkX != lastChunkX || chunkZ != lastChunkZ;
-        boolean debounceElapsed = now - lastEnqueueAtMs >= debounceMs;
-        if (!chunkChanged && !debounceElapsed) return;
+        if (!chunkChanged) return;
 
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
         PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
         queue.add(req);
-        lastEnqueueAtMs = now;
         lastChunkX = chunkX;
         lastChunkZ = chunkZ;
     }
