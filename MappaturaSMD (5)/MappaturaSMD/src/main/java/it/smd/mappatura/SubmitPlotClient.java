@@ -94,6 +94,11 @@ public class SubmitPlotClient {
     public static String normalizeUrl(String raw) {
         if (raw == null) return "";
         String s = raw.trim();
+        // compat: alcuni incollano endpoint .base44.com (non valido per questo progetto)
+        // normalizziamo verso .base44.app
+        if (s.contains(".base44.com")) {
+            s = s.replace(".base44.com", ".base44.app");
+        }
         // se finisce con "/", toglilo
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
         // se arriva un endpoint completo (/functions/submitPlot o simili), ricava il base
