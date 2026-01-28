@@ -17,6 +17,7 @@ public class PlotCacheManager {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String FILE_NAME = "mappaturasmd_cache.json";
+    private static final String UNKNOWN_OWNER = "Senza proprietario";
 
     /** key = owner normalizzato (lowercase), value = entries */
     private static final Map<String, List<Entry>> BY_OWNER = new HashMap<>();
@@ -59,10 +60,9 @@ public class PlotCacheManager {
 
     /** Registra un plot minimale (usato anche per risultati remoti searchPlot) */
     public static synchronized void recordBasic(String owner, String plotId, int coordX, int coordZ) {
-        if (owner == null || owner.isBlank()) return;
         if (plotId == null || plotId.isBlank()) return;
 
-        String ownerOriginal = owner.trim();
+        String ownerOriginal = (owner == null || owner.isBlank()) ? UNKNOWN_OWNER : owner.trim();
         String key = ownerOriginal.toLowerCase(Locale.ROOT);
 
         List<Entry> list = BY_OWNER.computeIfAbsent(key, k -> new ArrayList<>());

@@ -150,7 +150,9 @@ public class MappingController {
         PlotCacheManager.record(info);
 
         // 2) Enqueue push in background (istananeo sul gameplay)
-        if (!canSubmitNow()) {
+        if (!canSubmitNow(true)) {
+            submitQueue.enqueue(new SubmitTask(info));
+            HudOverlay.showBadge("⏱️ Plot in coda: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.NEUTRAL);
             return;
         }
         submitQueue.enqueue(new SubmitTask(info));
@@ -256,21 +258,27 @@ public class MappingController {
         HudOverlay.showBadge("✅ Plot inviato: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.OK);
     }
 
-    private boolean canSubmitNow() {
+    private boolean canSubmitNow(boolean showHud) {
         AppConfig cfg = ConfigManager.get();
         String endpoint = cfg != null ? SubmitPlotClient.normalizeUrl(cfg.endpointUrl) : "";
         if (endpoint.isBlank()) {
-            HudOverlay.showBadge("❌ Endpoint mancante", HudOverlay.Badge.ERROR);
+            if (showHud) {
+                HudOverlay.showBadge("❌ Endpoint mancante", HudOverlay.Badge.ERROR);
+            }
             return false;
         }
         String sessionCode = cfg != null ? cfg.sessionCode : null;
         if (sessionCode == null || sessionCode.isBlank()) {
-            HudOverlay.showBadge("❌ Codice sessione mancante", HudOverlay.Badge.ERROR);
+            if (showHud) {
+                HudOverlay.showBadge("❌ Codice sessione mancante", HudOverlay.Badge.ERROR);
+            }
             return false;
         }
         String token = cfg != null ? cfg.bearerToken : null;
         if (token == null || token.isBlank()) {
-            HudOverlay.showBadge("❌ Bearer token mancante", HudOverlay.Badge.ERROR);
+            if (showHud) {
+                HudOverlay.showBadge("❌ Bearer token mancante", HudOverlay.Badge.ERROR);
+            }
             return false;
         }
         return true;
@@ -323,6 +331,11 @@ public class MappingController {
         }
 
         private void handleSubmitTask(SubmitTask task) throws InterruptedException {
+            if (!canSubmitNow(false)) {
+                Thread.sleep(SUBMIT_RETRY_BASE_DELAY_MS);
+                queue.offer(task);
+                return;
+            }
             SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(task.info);
             if (shouldRetry(result) && task.attempt < SUBMIT_MAX_ATTEMPTS) {
                 long delay = SUBMIT_RETRY_BASE_DELAY_MS * (1L << Math.max(0, task.attempt - 1));
