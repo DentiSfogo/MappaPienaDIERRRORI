@@ -15,7 +15,7 @@ Jar in `build/libs/`.
 
 ### Nel pannello
 1) Inserisci **Codice sessione**
-2) Inserisci **Chiave ingest (SMD_INGEST_KEY)** (campo password)
+2) Inserisci **Bearer token** (submitPlot)
 3) Premi **Salva**
 4) Premi **Avvia**
 
