@@ -265,7 +265,7 @@ public class MappingController {
         if (!result.success) {
             String e = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
             if ("TOKEN_MISSING".equals(e)) {
-                HudOverlay.showBadge("❌ Submit fallito: secret key mancante nel config", HudOverlay.Badge.ERROR);
+                HudOverlay.showBadge("❌ Submit fallito: token mancante", HudOverlay.Badge.ERROR);
                 return;
             }
             HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
@@ -291,13 +291,6 @@ public class MappingController {
         if (sessionCode == null || sessionCode.isBlank()) {
             if (showHud) {
                 HudOverlay.showBadge("❌ Codice sessione mancante", HudOverlay.Badge.ERROR);
-            }
-            return false;
-        }
-        String token = SubmitPlotClient.resolveAuthToken(cfg);
-        if (token == null) {
-            if (showHud) {
-                HudOverlay.showBadge("❌ Secret key mancante nel config", HudOverlay.Badge.ERROR);
             }
             return false;
         }

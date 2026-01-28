@@ -218,10 +218,6 @@ public class SubmitPlotClient {
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
         String authToken = resolveAuthToken(cfg);
-        if (authToken == null) {
-            if (err != null) err.accept("TOKEN_MISSING");
-            return;
-        }
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
@@ -272,9 +268,6 @@ public class SubmitPlotClient {
         if (info.ultimoAccessoIso != null) plot.addProperty("ultimo_accesso", info.ultimoAccessoIso);
 
         String authToken = resolveAuthToken(cfg);
-        if (authToken == null) {
-            return errorResult("TOKEN_MISSING");
-        }
 
         JsonObject body = new JsonObject();
         body.addProperty("publish_code", publishCode);
