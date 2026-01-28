@@ -312,14 +312,20 @@ public class SubmitPlotClient {
                 // se è una delle nostre classi con httpStatus, setto via reflection safe
                 setHttpStatusIfPresent(obj, status);
 
-                if (cb != null) cb.accept(obj);
+                if (cb != null) {
+                    dispatchToMainThread(() -> cb.accept(obj));
+                }
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                if (cb != null) cb.accept(null);
+                if (cb != null) {
+                    dispatchToMainThread(() -> cb.accept(null));
+                }
             } catch (Exception e) {
-                if (cb != null) cb.accept(null);
+                if (cb != null) {
+                    dispatchToMainThread(() -> cb.accept(null));
+                }
             }
         }, "SMD-HTTP");
         worker.setDaemon(true);
@@ -359,5 +365,14 @@ public class SubmitPlotClient {
     public static void chatInfo(String msg) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc != null && mc.player != null) mc.player.sendMessage(Text.literal(msg), false);
+    }
+
+    private static void dispatchToMainThread(Runnable task) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null) {
+            mc.execute(task);
+        } else {
+            task.run();
+        }
     }
 }

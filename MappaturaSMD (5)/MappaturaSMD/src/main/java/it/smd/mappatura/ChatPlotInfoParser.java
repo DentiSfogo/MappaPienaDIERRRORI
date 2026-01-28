@@ -18,6 +18,7 @@ public class ChatPlotInfoParser {
      */
     private boolean collecting = false;
     private long startedAtMs = 0L;
+    private long requestId = 0L;
 
     // PlotSquared plot id tipico: "-5;10"
     private static final Pattern PLOT_ID_SEMI = Pattern.compile("(-?\\d+)\\s*;\\s*(-?\\d+)");
@@ -66,14 +67,19 @@ public class ChatPlotInfoParser {
      * Chiamalo subito dopo aver inviato /plot info.
      */
     public void beginRequest() {
-        beginRequest(null, null);
+        beginRequest(0L, null, null);
     }
 
     /**
      * Variante con fallback coord (es. posizione player al momento del comando).
      */
     public void beginRequest(Integer fallbackX, Integer fallbackZ) {
+        beginRequest(0L, fallbackX, fallbackZ);
+    }
+
+    public void beginRequest(long requestId, Integer fallbackX, Integer fallbackZ) {
         resetInternal();
+        this.requestId = requestId;
         this.fallbackCoordX = fallbackX;
         this.fallbackCoordZ = fallbackZ;
         collecting = true;
@@ -172,7 +178,8 @@ public class ChatPlotInfoParser {
                     useZ,
                     "overworld",
                     owner,
-                    toIso(last)
+                    toIso(last),
+                    requestId
             );
 
             System.out.println("[SMD] EMIT plot_id=" + plotId + " coord=(" + useX + "," + useZ + ")"
@@ -192,6 +199,7 @@ public class ChatPlotInfoParser {
         fallbackCoordZ = null;
         owner = null;
         last = null;
+        requestId = 0L;
     }
 
     private static Integer safeParseInt(String v) {
