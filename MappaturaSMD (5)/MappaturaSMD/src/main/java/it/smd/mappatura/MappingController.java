@@ -79,7 +79,9 @@ public class MappingController {
         if (!parser.isCollecting()) {
             String cmd = cfg != null ? cfg.plotInfoCommand : "plot info";
             sendCommand(client, cmd);
-            parser.beginRequest();
+            int fallbackX = client.player.getBlockPos().getX();
+            int fallbackZ = client.player.getBlockPos().getZ();
+            parser.beginRequest(fallbackX, fallbackZ);
             lastCommandAtMs = now;
         }
     }

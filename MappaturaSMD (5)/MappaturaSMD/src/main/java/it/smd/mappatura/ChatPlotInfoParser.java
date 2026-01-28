@@ -48,6 +48,8 @@ public class ChatPlotInfoParser {
     private String plotId;   // "-5;10" oppure "123"
     private Integer coordX;  // world X (best effort)
     private Integer coordZ;  // world Z (best effort)
+    private Integer fallbackCoordX; // fallback da posizione player
+    private Integer fallbackCoordZ; // fallback da posizione player
     private String owner;
     private String last;
 
@@ -64,7 +66,16 @@ public class ChatPlotInfoParser {
      * Chiamalo subito dopo aver inviato /plot info.
      */
     public void beginRequest() {
+        beginRequest(null, null);
+    }
+
+    /**
+     * Variante con fallback coord (es. posizione player al momento del comando).
+     */
+    public void beginRequest(Integer fallbackX, Integer fallbackZ) {
         resetInternal();
+        this.fallbackCoordX = fallbackX;
+        this.fallbackCoordZ = fallbackZ;
         collecting = true;
         startedAtMs = System.currentTimeMillis();
         if (DEBUG) System.out.println("[SMD][PARSER] beginRequest()");
@@ -152,17 +163,19 @@ public class ChatPlotInfoParser {
 
     private void emitIfPossible(boolean fromTimeout) {
         // Senza plotId o coords non possiamo pushare secondo spec (plot_id, coord_x, coord_z obbligatori)
-        if (plotId != null && coordX != null && coordZ != null) {
+        Integer useX = coordX != null ? coordX : fallbackCoordX;
+        Integer useZ = coordZ != null ? coordZ : fallbackCoordZ;
+        if (plotId != null && useX != null && useZ != null) {
             PlotInfo info = new PlotInfo(
                     plotId,
-                    coordX,
-                    coordZ,
+                    useX,
+                    useZ,
                     "overworld",
                     owner,
                     toIso(last)
             );
 
-            System.out.println("[SMD] EMIT plot_id=" + plotId + " coord=(" + coordX + "," + coordZ + ")"
+            System.out.println("[SMD] EMIT plot_id=" + plotId + " coord=(" + useX + "," + useZ + ")"
                     + (fromTimeout ? " [fromTimeout]" : ""));
 
             controller.onPlotInfoReady(info);
@@ -175,6 +188,8 @@ public class ChatPlotInfoParser {
         plotId = null;
         coordX = null;
         coordZ = null;
+        fallbackCoordX = null;
+        fallbackCoordZ = null;
         owner = null;
         last = null;
     }
