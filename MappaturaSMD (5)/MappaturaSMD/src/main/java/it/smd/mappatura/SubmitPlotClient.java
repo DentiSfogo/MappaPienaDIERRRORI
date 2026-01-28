@@ -426,7 +426,8 @@ public class SubmitPlotClient {
                 setHttpStatusIfPresent(obj, status);
 
                 if (cb != null) {
-                    dispatchToMainThread(() -> cb.accept(obj));
+                    final T result = obj;
+                    dispatchToMainThread(() -> cb.accept(result));
                 }
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
