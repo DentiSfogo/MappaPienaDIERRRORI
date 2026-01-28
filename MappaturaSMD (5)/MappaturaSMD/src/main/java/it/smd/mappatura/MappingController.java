@@ -5,6 +5,8 @@ import net.minecraft.text.Text;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -19,7 +21,6 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 public class MappingController {
 
-    private static final int MAX_QUEUE = 8;
     private static final int MAX_ATTEMPTS = 3;
     private static final boolean DEBUG_THROUGHPUT = false;
     private static final long THROUGHPUT_WINDOW_MS = 60_000L;
@@ -36,6 +37,7 @@ public class MappingController {
     private Integer lastChunkX = null;
     private Integer lastChunkZ = null;
     private final Deque<PlotRequest> queue = new ArrayDeque<>();
+    private final Set<String> pendingChunks = new HashSet<>();
     private PlotRequest inFlight;
     private final SubmitPlotQueue submitQueue;
 
@@ -43,14 +45,18 @@ public class MappingController {
         private final long requestId;
         private final Integer fallbackX;
         private final Integer fallbackZ;
+        private final int chunkX;
+        private final int chunkZ;
         private final int attempt;
         private final boolean priority;
         private long sentAtMs;
 
-        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int attempt, boolean priority) {
+        private PlotRequest(long requestId, Integer fallbackX, Integer fallbackZ, int chunkX, int chunkZ, int attempt, boolean priority) {
             this.requestId = requestId;
             this.fallbackX = fallbackX;
             this.fallbackZ = fallbackZ;
+            this.chunkX = chunkX;
+            this.chunkZ = chunkZ;
             this.attempt = attempt;
             this.priority = priority;
         }
@@ -70,6 +76,7 @@ public class MappingController {
         parser.forceReset();
         missingSessionWarned = false;
         queue.clear();
+        pendingChunks.clear();
         inFlight = null;
         lastCommandAtMs = 0L;
         requestSeq = 0L;
@@ -84,6 +91,7 @@ public class MappingController {
         running = false;
         parser.forceReset();
         queue.clear();
+        pendingChunks.clear();
         inFlight = null;
         lastChunkX = null;
         lastChunkZ = null;
@@ -147,6 +155,7 @@ public class MappingController {
         }
 
         if (inFlight != null) {
+            clearPendingChunk(inFlight);
             inFlight = null;
         }
 
@@ -178,6 +187,7 @@ public class MappingController {
         if (failed.attempt < MAX_ATTEMPTS) {
             enqueueRetry(failed);
         } else {
+            clearPendingChunk(failed);
             HudOverlay.showBadge("❌ Timeout plot info (max retry)", HudOverlay.Badge.ERROR);
         }
     }
@@ -202,21 +212,27 @@ public class MappingController {
 
     private void maybeEnqueueRequest(MinecraftClient client) {
         if (client == null || client.player == null) return;
-        if (queue.size() >= MAX_QUEUE) return;
 
         int chunkX = client.player.getChunkPos().x;
         int chunkZ = client.player.getChunkPos().z;
         boolean chunkChanged = lastChunkX == null || lastChunkZ == null || chunkX != lastChunkX || chunkZ != lastChunkZ;
         if (!chunkChanged) return;
+        String chunkKey = toChunkKey(chunkX, chunkZ);
+        if (pendingChunks.contains(chunkKey)) {
+            lastChunkX = chunkX;
+            lastChunkZ = chunkZ;
+            return;
+        }
 
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
-        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1, true);
+        PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, chunkX, chunkZ, 1, true);
         if (queue.isEmpty()) {
             queue.add(req);
         } else {
             queue.addFirst(req);
         }
+        pendingChunks.add(chunkKey);
         lastChunkX = chunkX;
         lastChunkZ = chunkZ;
     }
@@ -237,10 +253,26 @@ public class MappingController {
     }
 
     private void enqueueRetry(PlotRequest failed) {
-        if (queue.size() >= MAX_QUEUE) return;
-        PlotRequest retry = new PlotRequest(failed.requestId, failed.fallbackX, failed.fallbackZ, failed.attempt + 1, false);
+        PlotRequest retry = new PlotRequest(
+                failed.requestId,
+                failed.fallbackX,
+                failed.fallbackZ,
+                failed.chunkX,
+                failed.chunkZ,
+                failed.attempt + 1,
+                false
+        );
         queue.addFirst(retry);
         HudOverlay.showBadge("⚠️ Timeout plot info, retry " + retry.attempt + "/" + MAX_ATTEMPTS, HudOverlay.Badge.NEUTRAL);
+    }
+
+    private void clearPendingChunk(PlotRequest request) {
+        if (request == null) return;
+        pendingChunks.remove(toChunkKey(request.chunkX, request.chunkZ));
+    }
+
+    private String toChunkKey(int chunkX, int chunkZ) {
+        return chunkX + ":" + chunkZ;
     }
 
     private void recordThroughput() {
