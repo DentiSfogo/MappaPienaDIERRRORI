@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "mappaturasmd",
+  "version": "${version}",
+  "name": "Mappatura SMD",
+  "description": "Client-side mod con GUI/HUD per mappatura automatica plot e invio a Base44.",
+  "authors": [
+    "SMD"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "it.smd.mappatura.MappaturaSMDClient"
+    ]
+  },
+  "mixins": [
+    "mappaturasmd.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric": "*",
+    "minecraft": "1.21.x",
+    "java": ">=21"
+  }
+}

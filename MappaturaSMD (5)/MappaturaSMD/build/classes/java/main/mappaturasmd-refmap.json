@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "it/smd/mappatura/mixin/ChatScreenAccessor": {
+      "chatField": "field_2382:Lnet/minecraft/class_342;"
+    }
+  },
+  "data": {
+    "named:intermediary": {
+      "it/smd/mappatura/mixin/ChatScreenAccessor": {
+        "chatField": "field_2382:Lnet/minecraft/class_342;"
+      }
+    }
+  }
+}

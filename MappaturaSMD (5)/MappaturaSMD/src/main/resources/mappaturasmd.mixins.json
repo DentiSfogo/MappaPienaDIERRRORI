@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "it.smd.mappatura.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [],
+  "client": [
+    "ChatScreenAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
