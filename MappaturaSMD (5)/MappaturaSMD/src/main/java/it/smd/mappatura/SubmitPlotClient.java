@@ -1,95 +1,262 @@
 package it.smd.mappatura;
 
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.Text;
 
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Client HTTP per API Mappatura SMD
- * FIX: rimosse classi unnamed / preview, compatibile Java 17
+ * SubmitPlotClient (Java 17 / Fabric)
+ *
+ * Questo file è pensato per essere "drop-in": contiene TUTTI i metodi
+ * referenziati dagli altri file del progetto (submitAsync, searchPlotAsync,
+ * checkAccessAsync overload, normalizeUrl/derive*, requestWhitelistAsync, ecc.).
+ *
+ * IMPORTANTISSIMO:
+ * - Deve essere l'UNICO contenuto del file SubmitPlotClient.java
+ * - Deve iniziare con questa riga "package ..." e finire con l'ultima "}"
+ * - Non aggiungere/incollare altro sotto.
  */
 public class SubmitPlotClient {
 
-    public static class AuthResult {
+    // ====== Config ======
+    private static final Gson GSON = new Gson();
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
+
+    // ====== Models ======
+    public static final class AuthResult {
         public boolean authorized;
         public String reason;
         public JsonObject debug;
+        public String session_id;
+        public String session_name;
     }
 
-    public static class WhitelistRequestResult {
-        public String status;
+    public static final class SubmitResult {
+        public boolean success;
+        public boolean alreadyMapped;
+        public String plot_key;
+        public String session_id;
+        public String timestamp;
         public String error;
+        public JsonObject debug;
         public int httpStatus;
     }
 
-    private static String base() {
-        return ConfigManager.get().endpointUrl;
+    public static final class SearchResult {
+        public boolean success;
+        public String used_publish_code;
+        public JsonArray results;
+        public String error;
+        public JsonObject debug;
+        public int httpStatus;
     }
 
-    private static String playerName() {
-        return MinecraftClient.getInstance().getSession().getUsername();
+    public static final class WhitelistRequestResult {
+        public boolean success;
+        public String status;     // PENDING / ALREADY_PENDING / ALREADY_WHITELISTED
+        public String error;      // in caso di errore
+        public String message;    // in caso di errore server
+        public int httpStatus;
     }
 
-    private static String playerUUID() {
-        UUID u = MinecraftClient.getInstance().getSession().getUuidOrNull();
-        return u != null ? u.toString().replace("-", "") : null;
+    // ====== Public helpers (usati da /mappatura debug) ======
+    public static String getOperatorName() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.getSession() == null) return "unknown";
+        return mc.getSession().getUsername();
     }
 
-    /* ================= CHECK ACCESS ================= */
+    public static String getOperatorUuid() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.getSession() == null) return null;
+        UUID u = mc.getSession().getUuidOrNull();
+        return u == null ? null : u.toString().replace("-", "");
+    }
 
-    public static void checkAccessAsync(Consumer<AuthResult> cb) {
-        String url = base() + "/functions/checkAccess";
+    public static String normalizeUrl(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        // se finisce con "/", toglilo
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    public static String deriveCheckAccessUrl(String endpointBase) {
+        return normalizeUrl(endpointBase) + "/functions/checkAccess";
+    }
+
+    public static String deriveSearchPlotUrl(String endpointBase) {
+        return normalizeUrl(endpointBase) + "/functions/searchPlot";
+    }
+
+    public static String deriveSubmitPlotUrl(String endpointBase) {
+        return normalizeUrl(endpointBase) + "/functions/submitPlot";
+    }
+
+    public static String deriveWhitelistRequestUrl(String endpointBase) {
+        return normalizeUrl(endpointBase) + "/functions/whitelistRequest";
+    }
+
+    // ====== API calls ======
+
+    /**
+     * Overload usato in MappaturaSMDClient / MappaturaScreen:
+     * checkAccessAsync(publishCode, cb)
+     */
+    public static void checkAccessAsync(String publishCode, Consumer<AuthResult> cb) {
+        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String url = deriveCheckAccessUrl(base);
+
         JsonObject body = new JsonObject();
-        body.addProperty("operator_name", playerName());
-        body.addProperty("operator_uuid", playerUUID());
-        post(url, body, cb, AuthResult.class);
+        body.addProperty("operator_name", getOperatorName());
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        if (publishCode != null && !publishCode.isBlank()) body.addProperty("publish_code", publishCode);
+
+        postJson(url, body, AuthResult.class, cb);
     }
 
-    /* ================= WHITELIST REQUEST ================= */
+    /**
+     * Overload comodo: senza publish_code
+     */
+    public static void checkAccessAsync(Consumer<AuthResult> cb) {
+        checkAccessAsync(null, cb);
+    }
 
     public static void requestWhitelistAsync(Consumer<WhitelistRequestResult> cb) {
-        String url = base() + "/functions/whitelistRequest";
+        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String url = deriveWhitelistRequestUrl(base);
+
         JsonObject body = new JsonObject();
-        body.addProperty("operator_name", playerName());
-        body.addProperty("operator_uuid", playerUUID());
-        post(url, body, cb, WhitelistRequestResult.class);
+        body.addProperty("operator_name", getOperatorName());
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+
+        postJson(url, body, WhitelistRequestResult.class, cb);
     }
 
-    /* ================= HTTP CORE ================= */
+    public static void searchPlotAsync(String nome, Consumer<SearchResult> cb) {
+        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String url = deriveSearchPlotUrl(base);
 
-    private static <T> void post(String url, JsonObject body, Consumer<T> cb, Class<T> cls) {
+        AppConfig cfg = ConfigManager.get();
+        String publishCode = cfg != null ? cfg.sessionCode : null;
+
+        JsonObject body = new JsonObject();
+        body.addProperty("operator_name", getOperatorName());
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+
+        body.addProperty("search_query", nome);
+        if (publishCode != null && !publishCode.isBlank()) body.addProperty("publish_code", publishCode);
+
+        postJson(url, body, SearchResult.class, cb);
+    }
+
+    public static void submitAsync(PlotInfo info, Consumer<SubmitResult> ok, Consumer<String> err) {
+        String base = normalizeUrl(ConfigManager.get().endpointUrl);
+        String url = deriveSubmitPlotUrl(base);
+
+        AppConfig cfg = ConfigManager.get();
+        String publishCode = cfg != null ? cfg.sessionCode : null;
+
+        if (publishCode == null || publishCode.isBlank()) {
+            if (err != null) err.accept("SESSION_CODE_MISSING");
+            return;
+        }
+
+        JsonObject plot = new JsonObject();
+        plot.addProperty("plot_id", info.plotId);
+        plot.addProperty("coord_x", info.x);
+        plot.addProperty("coord_z", info.z);
+        if (info.owner != null) plot.addProperty("proprietario", info.owner);
+        if (info.lastAccess != null) plot.addProperty("ultimo_accesso", info.lastAccess);
+
+        JsonObject body = new JsonObject();
+        body.addProperty("publish_code", publishCode);
+        body.addProperty("operator_name", getOperatorName());
+        String uuid = getOperatorUuid();
+        if (uuid != null && !uuid.isBlank()) body.addProperty("operator_uuid", uuid);
+        body.add("plot_data", plot);
+
+        postJson(url, body, SubmitResult.class, r -> {
+            if (r == null) {
+                if (err != null) err.accept("NETWORK_ERROR");
+                return;
+            }
+            if (!r.success) {
+                if (err != null) err.accept(r.error != null ? r.error : "SUBMIT_FAILED");
+                return;
+            }
+            if (ok != null) ok.accept(r);
+        });
+    }
+
+    // ====== HTTP core ======
+
+    private static <T> void postJson(String url, JsonObject body, Class<T> cls, Consumer<T> cb) {
+        // thread separato (non blocca render thread)
         new Thread(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                c.setRequestMethod("POST");
-                c.setDoOutput(true);
-                c.setRequestProperty("Content-Type", "application/json");
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(REQ_TIMEOUT)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                        .build();
 
-                try (OutputStream os = c.getOutputStream()) {
-                    os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                int status = resp.statusCode();
+                String text = resp.body() == null ? "" : resp.body();
+
+                T obj = null;
+                try {
+                    obj = GSON.fromJson(text, cls);
+                } catch (Exception parse) {
+                    // se parsing fallisce, ritorno null
+                    obj = null;
                 }
 
-                int code = c.getResponseCode();
-                InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
-                String txt = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                // se è una delle nostre classi con httpStatus, setto via reflection safe
+                setHttpStatusIfPresent(obj, status);
 
-                T obj = new Gson().fromJson(txt, cls);
-
-                if (obj instanceof WhitelistRequestResult r) {
-                    r.httpStatus = code;
-                }
-
-                cb.accept(obj);
+                if (cb != null) cb.accept(obj);
+            } catch (IOException | InterruptedException e) {
+                if (cb != null) cb.accept(null);
             } catch (Exception e) {
-                e.printStackTrace();
-                cb.accept(null);
+                if (cb != null) cb.accept(null);
             }
         }, "SMD-HTTP").start();
+    }
+
+    private static void setHttpStatusIfPresent(Object obj, int status) {
+        if (obj == null) return;
+        try {
+            var f = obj.getClass().getDeclaredField("httpStatus");
+            f.setAccessible(true);
+            f.setInt(obj, status);
+        } catch (Exception ignore) {
+        }
+    }
+
+    // ====== Small UX helpers (opzionale) ======
+    public static void chatInfo(String msg) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null && mc.player != null) mc.player.sendMessage(Text.literal(msg), false);
     }
 }
