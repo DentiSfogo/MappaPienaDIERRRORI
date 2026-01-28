@@ -210,6 +210,14 @@ public class MappingController {
         boolean debounceElapsed = now - lastEnqueueAtMs >= debounceMs;
         if (!chunkChanged && !debounceElapsed) return;
 
+        int chunkX = client.player.getChunkPos().x;
+        int chunkZ = client.player.getChunkPos().z;
+        if (lastChunkX != null && lastChunkZ != null) {
+            if (chunkX == lastChunkX && chunkZ == lastChunkZ) {
+                return;
+            }
+        }
+
         int fallbackX = client.player.getBlockPos().getX();
         int fallbackZ = client.player.getBlockPos().getZ();
         PlotRequest req = new PlotRequest(++requestSeq, fallbackX, fallbackZ, 1);
