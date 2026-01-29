@@ -138,6 +138,11 @@ public class PlotCacheManager {
         return PLOT_IDS.contains(plotId.trim());
     }
 
+    /** Numero totale di plot mappati in cache. */
+    public static synchronized int getMappedCount() {
+        return PLOT_IDS.size();
+    }
+
     /** Verifica se un PlotInfo è già presente in cache (qualsiasi owner). */
     public static synchronized boolean isPlotMapped(PlotInfo info) {
         if (info == null) return false;
