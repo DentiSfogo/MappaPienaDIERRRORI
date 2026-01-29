@@ -32,7 +32,6 @@ final class OperatorHudOverlay {
                 .append(Text.literal(String.valueOf(pendingCount)).formatted(Formatting.YELLOW));
 
         int screenWidth = client.getWindow().getScaledWidth();
-        int screenHeight = client.getWindow().getScaledHeight();
         int lineHeight = client.textRenderer.fontHeight + 1;
         int padding = 4;
         int line1Width = client.textRenderer.getWidth(line1);
@@ -40,7 +39,7 @@ final class OperatorHudOverlay {
         int boxWidth = Math.min(screenWidth - 12, Math.max(line1Width, line2Width) + padding * 2);
         int boxHeight = lineHeight * 2 + padding * 2;
         int x = 6;
-        int y = Math.max(6, screenHeight - boxHeight - 6);
+        int y = 6;
 
         context.fill(x - 2, y - 2, x + boxWidth + 2, y + boxHeight + 2, 0x90000000);
         context.drawTextWithShadow(client.textRenderer, line1, x + padding, y + padding, 0xFFFFFF);
