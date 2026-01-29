@@ -129,6 +129,21 @@ public class PlotCacheManager {
         return sb.toString().trim();
     }
 
+    /** Verifica se un plotId è già presente in cache (qualsiasi owner). */
+    public static synchronized boolean isPlotMapped(String plotId) {
+        if (plotId == null || plotId.isBlank()) return false;
+        String target = plotId.trim();
+        for (List<Entry> list : BY_OWNER.values()) {
+            if (list == null) continue;
+            for (Entry entry : list) {
+                if (entry != null && target.equals(entry.plotId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public static synchronized void clear() {
         BY_OWNER.clear();
         save();
