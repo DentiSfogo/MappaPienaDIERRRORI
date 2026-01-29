@@ -49,6 +49,7 @@ public class MappingController {
     private long lastSubmitBlockWarnAtMs = 0L;
     private long lastSubmitRetryWarnAtMs = 0L;
     private String lastSubmitBlockReason = null;
+    private boolean forceRunNextTick = false;
 
     private static final class PlotRequest {
         private final long requestId;
@@ -93,6 +94,7 @@ public class MappingController {
         throughputWindowStartMs = System.currentTimeMillis();
         lastChunkX = null;
         lastChunkZ = null;
+        forceRunNextTick = true;
         running = true;
     }
 
@@ -104,6 +106,7 @@ public class MappingController {
         inFlight = null;
         lastChunkX = null;
         lastChunkZ = null;
+        forceRunNextTick = false;
     }
 
     public void toggle() {
@@ -125,7 +128,12 @@ public class MappingController {
         parser.tick(cfg != null ? cfg.parserTimeoutMs : 0L);
 
         int interval = cfg != null ? cfg.tickInterval : 1;
-        if (!TickGate.INSTANCE.shouldRun(interval)) return;
+        boolean shouldRun = TickGate.INSTANCE.shouldRun(interval);
+        if (forceRunNextTick) {
+            shouldRun = true;
+            forceRunNextTick = false;
+        }
+        if (!shouldRun) return;
 
         if (client.player == null || client.getNetworkHandler() == null) return;
 
