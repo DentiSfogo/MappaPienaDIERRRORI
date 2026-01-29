@@ -12,14 +12,13 @@ final class OperatorHudOverlay {
 
     public static void render(DrawContext context, MappingController controller) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || context == null) return;
+        if (client == null || context == null) return;
         if (client.options != null && client.options.hudHidden) return;
-        if (controller == null) return;
 
         String operator = client.getSession() != null ? client.getSession().getUsername() : "Operatore";
         int mappedCount = PlotCacheManager.getMappedCount();
-        int pendingCount = controller.getPendingSubmitCount();
-        boolean running = controller.isRunning();
+        int pendingCount = controller != null ? controller.getPendingSubmitCount() : 0;
+        boolean running = controller != null && controller.isRunning();
 
         MutableText line1 = Text.literal("Operatore: ").formatted(Formatting.GRAY)
                 .append(Text.literal(operator).formatted(Formatting.WHITE))

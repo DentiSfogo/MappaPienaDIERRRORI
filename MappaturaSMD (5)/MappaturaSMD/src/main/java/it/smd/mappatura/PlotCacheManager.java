@@ -18,6 +18,7 @@ public class PlotCacheManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String FILE_NAME = "mappaturasmd_cache.json";
     private static final String UNKNOWN_OWNER = "Senza proprietario";
+    private static boolean initialized = false;
 
     /** key = owner normalizzato (lowercase), value = entries */
     private static final Map<String, List<Entry>> BY_OWNER = new HashMap<>();
@@ -51,16 +52,19 @@ public class PlotCacheManager {
 
     public static synchronized void init() {
         load();
+        initialized = true;
     }
 
     /** Registra un plot (de-dup per plotId) */
     public static synchronized void record(PlotInfo info) {
+        ensureLoaded();
         if (info == null) return;
         recordBasic(info.proprietario, info.plotId, info.coordX, info.coordZ);
     }
 
     /** Registra un plot minimale (usato anche per risultati remoti searchPlot) */
     public static synchronized void recordBasic(String owner, String plotId, int coordX, int coordZ) {
+        ensureLoaded();
         if (plotId == null || plotId.isBlank()) return;
         String normalizedPlotId = plotId.trim();
 
@@ -81,6 +85,7 @@ public class PlotCacheManager {
 
     /** Ritorna tutti i plot assegnati a un owner (cache locale) */
     public static synchronized List<Entry> search(String owner) {
+        ensureLoaded();
         if (owner == null) return Collections.emptyList();
         String k = owner.trim().toLowerCase(Locale.ROOT);
 
@@ -94,6 +99,7 @@ public class PlotCacheManager {
 
     /** Per TAB / suggerimenti */
     public static synchronized List<String> getAllOwners() {
+        ensureLoaded();
         List<String> out = new ArrayList<>();
         for (List<Entry> list : BY_OWNER.values()) {
             if (list != null && !list.isEmpty()) {
@@ -111,6 +117,7 @@ public class PlotCacheManager {
 
     /** Formatta SOLO: Nome + plotId + (x, z) */
     public static synchronized String formatForChat(String owner) {
+        ensureLoaded();
         List<Entry> list = search(owner);
 
         StringBuilder sb = new StringBuilder();
@@ -134,22 +141,26 @@ public class PlotCacheManager {
 
     /** Verifica se un plotId è già presente in cache (qualsiasi owner). */
     public static synchronized boolean isPlotMapped(String plotId) {
+        ensureLoaded();
         if (plotId == null || plotId.isBlank()) return false;
         return PLOT_IDS.contains(plotId.trim());
     }
 
     /** Numero totale di plot mappati in cache. */
     public static synchronized int getMappedCount() {
+        ensureLoaded();
         return PLOT_IDS.size();
     }
 
     /** Verifica se un PlotInfo è già presente in cache (qualsiasi owner). */
     public static synchronized boolean isPlotMapped(PlotInfo info) {
+        ensureLoaded();
         if (info == null) return false;
         return isPlotMapped(info.plotId);
     }
 
     public static synchronized void clear() {
+        ensureLoaded();
         BY_OWNER.clear();
         PLOT_IDS.clear();
         save();
@@ -178,6 +189,12 @@ public class PlotCacheManager {
                 }
             }
         } catch (Exception ignored) {}
+    }
+
+    private static void ensureLoaded() {
+        if (initialized) return;
+        load();
+        initialized = true;
     }
 
     private static void save() {
