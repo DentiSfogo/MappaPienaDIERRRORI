@@ -119,6 +119,10 @@ public class SubmitPlotClient {
                 break;
             }
         }
+        // compat: alcuni incollano il base URL già con /functions
+        if (s.endsWith("/functions")) {
+            s = s.substring(0, s.length() - "/functions".length());
+        }
         return s;
     }
 

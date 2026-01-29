@@ -21,6 +21,7 @@ public class PlotCacheManager {
 
     /** key = owner normalizzato (lowercase), value = entries */
     private static final Map<String, List<Entry>> BY_OWNER = new HashMap<>();
+    private static final Set<String> PLOT_IDS = new HashSet<>();
 
     public static class Entry {
         public String owner;    // Nome proprietario (originale)
@@ -61,6 +62,7 @@ public class PlotCacheManager {
     /** Registra un plot minimale (usato anche per risultati remoti searchPlot) */
     public static synchronized void recordBasic(String owner, String plotId, int coordX, int coordZ) {
         if (plotId == null || plotId.isBlank()) return;
+        String normalizedPlotId = plotId.trim();
 
         String ownerOriginal = (owner == null || owner.isBlank()) ? UNKNOWN_OWNER : owner.trim();
         String key = ownerOriginal.toLowerCase(Locale.ROOT);
@@ -69,10 +71,11 @@ public class PlotCacheManager {
 
         list.removeIf(Objects::isNull);
         for (Entry e : list) {
-            if (e != null && Objects.equals(e.plotId, plotId)) return;
+            if (e != null && Objects.equals(e.plotId, normalizedPlotId)) return;
         }
 
-        list.add(new Entry(ownerOriginal, plotId, coordX, coordZ));
+        list.add(new Entry(ownerOriginal, normalizedPlotId, coordX, coordZ));
+        PLOT_IDS.add(normalizedPlotId);
         save();
     }
 
@@ -132,16 +135,7 @@ public class PlotCacheManager {
     /** Verifica se un plotId è già presente in cache (qualsiasi owner). */
     public static synchronized boolean isPlotMapped(String plotId) {
         if (plotId == null || plotId.isBlank()) return false;
-        String target = plotId.trim();
-        for (List<Entry> list : BY_OWNER.values()) {
-            if (list == null) continue;
-            for (Entry entry : list) {
-                if (entry != null && target.equals(entry.plotId)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return PLOT_IDS.contains(plotId.trim());
     }
 
     /** Verifica se un PlotInfo è già presente in cache (qualsiasi owner). */
@@ -152,6 +146,7 @@ public class PlotCacheManager {
 
     public static synchronized void clear() {
         BY_OWNER.clear();
+        PLOT_IDS.clear();
         save();
     }
 
@@ -167,6 +162,15 @@ public class PlotCacheManager {
             if (p != null && p.byOwner != null) {
                 BY_OWNER.clear();
                 BY_OWNER.putAll(p.byOwner);
+                PLOT_IDS.clear();
+                for (List<Entry> list : BY_OWNER.values()) {
+                    if (list == null) continue;
+                    for (Entry entry : list) {
+                        if (entry != null && entry.plotId != null && !entry.plotId.isBlank()) {
+                            PLOT_IDS.add(entry.plotId.trim());
+                        }
+                    }
+                }
             }
         } catch (Exception ignored) {}
     }
