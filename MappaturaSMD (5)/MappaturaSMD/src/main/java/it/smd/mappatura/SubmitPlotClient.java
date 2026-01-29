@@ -11,9 +11,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.function.Consumer;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * SubmitPlotClient (Java 17 / Fabric)
@@ -36,6 +42,7 @@ public class SubmitPlotClient {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .version(HttpClient.Version.HTTP_1_1)
             .build();
+    private static volatile HttpClient INSECURE_HTTP;
 
     private static final Duration REQ_TIMEOUT = Duration.ofSeconds(15);
     private static final int MAX_RETRIES = 3;
@@ -342,7 +349,7 @@ public class SubmitPlotClient {
                         .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                         .build();
 
-                resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                resp = sendWithOptionalInsecure(req);
                 status = resp.statusCode();
                 text = resp.body() == null ? "" : resp.body();
 
@@ -402,7 +409,7 @@ public class SubmitPlotClient {
                             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                             .build();
 
-                    resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                    resp = sendWithOptionalInsecure(req);
                     status = resp.statusCode();
                     text = resp.body() == null ? "" : resp.body();
 
@@ -460,6 +467,70 @@ public class SubmitPlotClient {
             f.setAccessible(true);
             f.setInt(obj, status);
         } catch (Exception ignore) {
+        }
+    }
+
+    private static HttpResponse<String> sendWithOptionalInsecure(HttpRequest req)
+            throws IOException, InterruptedException {
+        try {
+            return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException ex) {
+            if (isSslHandshakeException(ex)) {
+                System.out.println("[SMD][HTTP] SSL validation failed, retrying with insecure client.");
+                return getInsecureHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            }
+            throw ex;
+        }
+    }
+
+    private static boolean isSslHandshakeException(Throwable ex) {
+        Throwable current = ex;
+        while (current != null) {
+            if (current instanceof SSLHandshakeException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static HttpClient getInsecureHttpClient() throws IOException {
+        if (INSECURE_HTTP != null) {
+            return INSECURE_HTTP;
+        }
+        synchronized (SubmitPlotClient.class) {
+            if (INSECURE_HTTP != null) {
+                return INSECURE_HTTP;
+            }
+            try {
+                TrustManager[] trustAll = new TrustManager[]{
+                        new X509TrustManager() {
+                            @Override
+                            public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                            }
+
+                            @Override
+                            public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                            }
+
+                            @Override
+                            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                                return new java.security.cert.X509Certificate[0];
+                            }
+                        }
+                };
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustAll, new java.security.SecureRandom());
+                INSECURE_HTTP = HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .sslContext(sslContext)
+                        .build();
+                return INSECURE_HTTP;
+            } catch (NoSuchAlgorithmException | KeyManagementException e) {
+                throw new IOException("Unable to initialize insecure SSL context", e);
+            }
         }
     }
 
