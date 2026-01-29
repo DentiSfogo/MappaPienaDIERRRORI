@@ -35,3 +35,15 @@ processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") { expand "version": project.version }
 }
+
+tasks.jar {
+    archiveClassifier = "dev"
+}
+
+tasks.remapJar {
+    archiveClassifier = null
+}
+
+tasks.build {
+    dependsOn tasks.remapJar
+}
