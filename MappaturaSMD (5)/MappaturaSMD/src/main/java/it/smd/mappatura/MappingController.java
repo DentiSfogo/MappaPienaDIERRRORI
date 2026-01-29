@@ -165,7 +165,7 @@ public class MappingController {
 
         recordThroughput();
 
-        boolean alreadyMapped = PlotCacheManager.isPlotMapped(info.plotId);
+        boolean alreadyMapped = PlotCacheManager.isPlotMapped(info);
 
         // 1) Salva in cache locale (persistente)
         PlotCacheManager.record(info);
