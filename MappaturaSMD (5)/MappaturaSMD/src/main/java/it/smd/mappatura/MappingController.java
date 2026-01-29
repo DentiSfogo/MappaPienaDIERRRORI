@@ -286,7 +286,6 @@ public class MappingController {
         inFlight = req;
         inFlight.sentAtMs = now;
         String cmd = ConfigManager.get() != null ? ConfigManager.get().plotInfoCommand : "plot info";
-        sendCommand(client, cmd);
         String dimension = null;
         if (client.world != null && client.world.getRegistryKey() != null) {
             dimension = client.world.getRegistryKey().getValue().getPath();
@@ -296,6 +295,7 @@ public class MappingController {
             dimension = cfg != null ? cfg.dimensionDefault : null;
         }
         parser.beginRequest(req.requestId, req.fallbackX, req.fallbackZ, dimension);
+        sendCommand(client, cmd);
         lastCommandAtMs = now;
     }
 
