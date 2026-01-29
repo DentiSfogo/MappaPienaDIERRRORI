@@ -41,7 +41,7 @@ final class OperatorHudOverlay {
         int y = 6;
 
         context.fill(x - 2, y - 2, x + boxWidth + 2, y + boxHeight + 2, 0x90000000);
-        context.drawTextWithShadow(client.textRenderer, line1, x + padding, y + padding, 0xFFFFFF);
-        context.drawTextWithShadow(client.textRenderer, line2, x + padding, y + padding + lineHeight, 0xFFFFFF);
+        context.drawTextWithShadow(client.textRenderer, line1, x + padding, y + padding, 0xFFFFFFFF);
+        context.drawTextWithShadow(client.textRenderer, line2, x + padding, y + padding + lineHeight, 0xFFFFFFFF);
     }
 }
