@@ -144,6 +144,12 @@ public class PlotCacheManager {
         return false;
     }
 
+    /** Verifica se un PlotInfo è già presente in cache (qualsiasi owner). */
+    public static synchronized boolean isPlotMapped(PlotInfo info) {
+        if (info == null) return false;
+        return isPlotMapped(info.plotId);
+    }
+
     public static synchronized void clear() {
         BY_OWNER.clear();
         save();
