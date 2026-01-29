@@ -118,6 +118,10 @@ public class MappingController {
         return running;
     }
 
+    public int getPendingSubmitCount() {
+        return submitQueue.getPendingCount();
+    }
+
     public void onTick(MinecraftClient client) {
         if (!running) return;
         if (client == null) return;
@@ -538,6 +542,10 @@ public class MappingController {
                 if (task != null && task.info != null) snapshot.add(task.info);
             }
             SubmitQueueStorage.savePending(snapshot);
+        }
+
+        private int getPendingCount() {
+            return pendingByKey.size();
         }
     }
 
