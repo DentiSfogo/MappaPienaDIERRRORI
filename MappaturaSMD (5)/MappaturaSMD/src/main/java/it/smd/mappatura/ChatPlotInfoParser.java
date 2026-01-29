@@ -41,6 +41,12 @@ public class ChatPlotInfoParser {
             "(?:ultimo\\s+accesso|last\\s+(?:seen|login))\\s*[»:\\-]\\s*(.+)",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern NOT_IN_PLOT = Pattern.compile(
+            "(?:non\\s+sei\\s+(?:in|su)\\s+(?:un|una|nessun)\\s+plot"
+                    + "|not\\s+standing\\s+in\\s+a\\s+plot"
+                    + "|not\\s+in\\s+a\\s+plot)",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
@@ -104,6 +110,11 @@ public class ChatPlotInfoParser {
         }
 
         if (!collecting) return;
+        if (NOT_IN_PLOT.matcher(s).find()) {
+            controller.onPlotInfoRejected(s);
+            resetInternal();
+            return;
+        }
 
         // 1) plotId: preferiamo "-5;10" se presente
         if (plotId == null) {

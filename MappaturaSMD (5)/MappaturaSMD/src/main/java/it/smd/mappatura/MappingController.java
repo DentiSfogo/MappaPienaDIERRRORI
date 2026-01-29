@@ -216,6 +216,21 @@ public class MappingController {
         }
     }
 
+    /**
+     * HOOK richiesto da ChatPlotInfoParser:
+     * chiamato quando il server risponde che non siamo dentro un plot.
+     */
+    public void onPlotInfoRejected(String reason) {
+        if (inFlight == null) return;
+
+        PlotRequest failed = inFlight;
+        inFlight = null;
+        clearPendingChunk(failed);
+
+        String detail = (reason == null || reason.isBlank()) ? "Plot info non disponibile" : reason;
+        HudOverlay.showBadge("⚠️ " + detail + " (chunk " + failed.chunkX + ", " + failed.chunkZ + ")", HudOverlay.Badge.NEUTRAL);
+    }
+
     private void sendCommand(MinecraftClient client, String command) {
         if (client == null || client.getNetworkHandler() == null) return;
         if (command == null || command.isBlank()) return;
