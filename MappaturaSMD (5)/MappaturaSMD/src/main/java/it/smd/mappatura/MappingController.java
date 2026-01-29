@@ -122,6 +122,18 @@ public class MappingController {
         return submitQueue.getPendingCount();
     }
 
+    public int getPendingPlotRequestCount() {
+        int count = queue.size();
+        if (inFlight != null) {
+            count++;
+        }
+        return count;
+    }
+
+    public boolean isAwaitingPlotInfo() {
+        return inFlight != null;
+    }
+
     public void onTick(MinecraftClient client) {
         if (!running) return;
         if (client == null) return;
