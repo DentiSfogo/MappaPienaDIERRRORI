@@ -75,8 +75,9 @@ public class MappaturaCommands {
                     return;
                 }
                 if (!r.success) {
+                    String detail = buildErrorDetail(r.error, r.httpStatus, r.debug, null);
                     send(Text.literal("❌ Errore: ").formatted(Formatting.RED, Formatting.BOLD)
-                            .append(Text.literal(String.valueOf(r.error)).formatted(Formatting.RED)));
+                            .append(Text.literal(detail).formatted(Formatting.RED)));
                     return;
                 }
 
@@ -154,7 +155,7 @@ public class MappaturaCommands {
                 send(Text.literal("🔗 ").formatted(Formatting.DARK_GRAY).append(open));
             }
             default -> {
-                String err = (r.error != null && !r.error.isBlank()) ? r.error : ("HTTP " + r.httpStatus);
+                String err = buildErrorDetail(r.error, r.httpStatus, null, r.message);
                 send(Text.literal("❌ Richiesta fallita: ").formatted(Formatting.RED, Formatting.BOLD)
                         .append(Text.literal(err).formatted(Formatting.RED)));
             }
@@ -252,5 +253,16 @@ public class MappaturaCommands {
         if (o.has(key1) && !o.get(key1).isJsonNull()) return o.get(key1).getAsInt();
         if (o.has(key2) && !o.get(key2).isJsonNull()) return o.get(key2).getAsInt();
         return 0;
+    }
+
+    private static String buildErrorDetail(String error, int httpStatus, JsonObject debug, String message) {
+        String detail = (error != null && !error.isBlank()) ? error : (httpStatus > 0 ? "HTTP " + httpStatus : "ERRORE");
+        if (message != null && !message.isBlank() && !message.equalsIgnoreCase(detail)) {
+            detail += " (" + message + ")";
+        }
+        if (debug != null && debug.has("exception")) {
+            detail += " [" + debug.get("exception").getAsString() + "]";
+        }
+        return detail;
     }
 }

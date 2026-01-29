@@ -30,6 +30,8 @@ public class MappingController {
     private static final int SUBMIT_MAX_ATTEMPTS = 5;
     private static final long SUBMIT_RETRY_BASE_DELAY_MS = 750L;
     private static final int SUBMIT_WORKERS = 2;
+    private static final long SUBMIT_BLOCK_WARN_COOLDOWN_MS = 10_000L;
+    private static final long SUBMIT_RETRY_WARN_COOLDOWN_MS = 5_000L;
 
     private boolean running = false;
     private final ChatPlotInfoParser parser;
@@ -44,6 +46,9 @@ public class MappingController {
     private final Set<String> pendingChunks = new HashSet<>();
     private PlotRequest inFlight;
     private final SubmitPlotQueue submitQueue;
+    private long lastSubmitBlockWarnAtMs = 0L;
+    private long lastSubmitRetryWarnAtMs = 0L;
+    private String lastSubmitBlockReason = null;
 
     private static final class PlotRequest {
         private final long requestId;
@@ -199,7 +204,7 @@ public class MappingController {
             enqueueRetry(failed);
         } else {
             clearPendingChunk(failed);
-            HudOverlay.showBadge("❌ Timeout plot info (max retry)", HudOverlay.Badge.ERROR);
+            HudOverlay.showBadge("❌ Timeout plot info (max retry) su chunk " + failed.chunkX + ", " + failed.chunkZ, HudOverlay.Badge.ERROR);
         }
     }
 
@@ -309,17 +314,18 @@ public class MappingController {
 
     private void handleSubmitResult(PlotInfo info, SubmitPlotClient.SubmitResult result) {
         if (result == null) {
-            HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR", HudOverlay.Badge.ERROR);
+            HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (nessuna risposta)", HudOverlay.Badge.ERROR);
             return;
         }
         if (!result.success) {
-            String e = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
-            if ("NETWORK_ERROR".equals(e) && result.debug != null && result.debug.has("exception")) {
-                String detail = result.debug.get("exception").getAsString();
-                HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (" + detail + ")", HudOverlay.Badge.ERROR);
+            String rawError = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
+            String detail = buildSubmitFailureDetail(result);
+            if ("NETWORK_ERROR".equals(rawError) && result.debug != null && result.debug.has("exception")) {
+                String exception = result.debug.get("exception").getAsString();
+                HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (" + exception + ")", HudOverlay.Badge.ERROR);
                 return;
             }
-            if (result.httpStatus == 403 && "NOT_WHITELISTED".equalsIgnoreCase(e)) {
+            if (result.httpStatus == 403 && "NOT_WHITELISTED".equalsIgnoreCase(rawError)) {
                 HudOverlay.showBadge("⛔ Accesso negato: richiedi la whitelist.", HudOverlay.Badge.ERROR);
                 return;
             }
@@ -327,7 +333,7 @@ public class MappingController {
                 HudOverlay.showBadge("❌ Sessione non trovata o non attiva.", HudOverlay.Badge.ERROR);
                 return;
             }
-            HudOverlay.showBadge("❌ Submit fallito: " + e, HudOverlay.Badge.ERROR);
+            HudOverlay.showBadge("❌ Submit fallito: " + detail, HudOverlay.Badge.ERROR);
             return;
         }
         if (result.alreadyMapped) {
@@ -338,22 +344,58 @@ public class MappingController {
     }
 
     private boolean canSubmitNow(boolean showHud) {
+        String blockReason = getSubmitBlockReason();
+        if (blockReason == null) return true;
+        if (showHud) {
+            HudOverlay.showBadge("❌ " + blockReason, HudOverlay.Badge.ERROR);
+        }
+        return false;
+    }
+
+    private String getSubmitBlockReason() {
         AppConfig cfg = ConfigManager.get();
         String endpoint = cfg != null ? SubmitPlotClient.normalizeUrl(cfg.endpointUrl) : "";
         if (endpoint.isBlank()) {
-            if (showHud) {
-                HudOverlay.showBadge("❌ Endpoint mancante", HudOverlay.Badge.ERROR);
-            }
-            return false;
+            return "Endpoint mancante";
         }
         String sessionCode = cfg != null ? cfg.sessionCode : null;
         if (sessionCode == null || sessionCode.isBlank()) {
-            if (showHud) {
-                HudOverlay.showBadge("❌ Codice sessione mancante", HudOverlay.Badge.ERROR);
-            }
-            return false;
+            return "Codice sessione mancante";
         }
-        return true;
+        return null;
+    }
+
+    private void notifySubmitBlocked(String reason) {
+        long now = System.currentTimeMillis();
+        if (reason == null || reason.isBlank()) return;
+        if (reason.equals(lastSubmitBlockReason) && now - lastSubmitBlockWarnAtMs < SUBMIT_BLOCK_WARN_COOLDOWN_MS) {
+            return;
+        }
+        lastSubmitBlockReason = reason;
+        lastSubmitBlockWarnAtMs = now;
+        dispatchToMainThread(() -> HudOverlay.showBadge("⚠️ Invio sospeso: " + reason + ".", HudOverlay.Badge.ERROR));
+    }
+
+    private void notifySubmitRetry(SubmitTask task, String detail, long delayMs) {
+        long now = System.currentTimeMillis();
+        if (now - lastSubmitRetryWarnAtMs < SUBMIT_RETRY_WARN_COOLDOWN_MS) return;
+        lastSubmitRetryWarnAtMs = now;
+        String reason = (detail == null || detail.isBlank()) ? "errore sconosciuto" : detail;
+        String message = "⚠️ Invio fallito (" + reason + "). Riprovo " + (task.attempt + 1) + "/" + SUBMIT_MAX_ATTEMPTS
+                + " tra " + (delayMs / 1000) + "s.";
+        dispatchToMainThread(() -> HudOverlay.showBadge(message, HudOverlay.Badge.NEUTRAL));
+    }
+
+    private String buildSubmitFailureDetail(SubmitPlotClient.SubmitResult result) {
+        if (result == null) return "NETWORK_ERROR";
+        String error = (result.error == null || result.error.isBlank()) ? "SUBMIT_FAILED" : result.error;
+        if ("NETWORK_ERROR".equals(error) && result.debug != null && result.debug.has("exception")) {
+            error += " (" + result.debug.get("exception").getAsString() + ")";
+        }
+        if (result.httpStatus > 0 && !error.startsWith("HTTP_")) {
+            error += " [HTTP " + result.httpStatus + "]";
+        }
+        return error;
     }
 
     private void dispatchToMainThread(Runnable task) {
@@ -423,11 +465,14 @@ public class MappingController {
 
         private void handleSubmitTask(SubmitTask task) throws InterruptedException {
             while (!canSubmitNow(false)) {
+                String reason = getSubmitBlockReason();
+                notifySubmitBlocked(reason != null ? reason : "configurazione incompleta");
                 Thread.sleep(SUBMIT_RETRY_BASE_DELAY_MS);
             }
             SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(task.info);
             if (shouldRetry(result) && task.attempt < SUBMIT_MAX_ATTEMPTS) {
                 long delay = SUBMIT_RETRY_BASE_DELAY_MS * (1L << Math.max(0, task.attempt - 1));
+                notifySubmitRetry(task, buildSubmitFailureDetail(result), delay);
                 Thread.sleep(delay);
                 task.attempt++;
                 queue.offer(task);
