@@ -50,6 +50,7 @@ public class MappingController {
     private long lastSubmitRetryWarnAtMs = 0L;
     private String lastSubmitBlockReason = null;
     private boolean forceRunNextTick = false;
+    private boolean awaitingFirstResponse = false;
 
     private static final class PlotRequest {
         private final long requestId;
@@ -95,6 +96,7 @@ public class MappingController {
         lastChunkX = null;
         lastChunkZ = null;
         forceRunNextTick = true;
+        awaitingFirstResponse = true;
         running = true;
     }
 
@@ -107,6 +109,7 @@ public class MappingController {
         lastChunkX = null;
         lastChunkZ = null;
         forceRunNextTick = false;
+        awaitingFirstResponse = false;
     }
 
     public void toggle() {
@@ -175,6 +178,7 @@ public class MappingController {
             clearPendingChunk(inFlight);
             inFlight = null;
         }
+        awaitingFirstResponse = false;
 
         recordThroughput();
 
@@ -207,6 +211,7 @@ public class MappingController {
 
         PlotRequest failed = inFlight;
         inFlight = null;
+        awaitingFirstResponse = false;
 
         if (failed.attempt < MAX_ATTEMPTS) {
             enqueueRetry(failed);
@@ -226,6 +231,7 @@ public class MappingController {
         PlotRequest failed = inFlight;
         inFlight = null;
         clearPendingChunk(failed);
+        awaitingFirstResponse = false;
 
         String detail = (reason == null || reason.isBlank()) ? "Plot info non disponibile" : reason;
         HudOverlay.showBadge("⚠️ " + detail + " (chunk " + failed.chunkX + ", " + failed.chunkZ + ")", HudOverlay.Badge.NEUTRAL);
@@ -256,6 +262,9 @@ public class MappingController {
         int chunkZ = client.player.getChunkPos().z;
         boolean chunkChanged = lastChunkX == null || lastChunkZ == null || chunkX != lastChunkX || chunkZ != lastChunkZ;
         if (!chunkChanged) return;
+        if (awaitingFirstResponse && inFlight != null && (chunkX != inFlight.chunkX || chunkZ != inFlight.chunkZ)) {
+            cancelInFlightForNewChunk();
+        }
         String chunkKey = toChunkKey(chunkX, chunkZ);
         if (pendingChunks.contains(chunkKey)) {
             lastChunkX = chunkX;
@@ -274,6 +283,12 @@ public class MappingController {
         pendingChunks.add(chunkKey);
         lastChunkX = chunkX;
         lastChunkZ = chunkZ;
+    }
+
+    private void cancelInFlightForNewChunk() {
+        parser.forceReset();
+        clearPendingChunk(inFlight);
+        inFlight = null;
     }
 
     private void startNextIfReady(MinecraftClient client, long now, long cooldownMs) {
