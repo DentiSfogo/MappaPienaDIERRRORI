@@ -4,10 +4,13 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -26,6 +29,7 @@ public class MappingController {
     private static final long THROUGHPUT_WINDOW_MS = 60_000L;
     private static final int SUBMIT_MAX_ATTEMPTS = 5;
     private static final long SUBMIT_RETRY_BASE_DELAY_MS = 750L;
+    private static final int SUBMIT_WORKERS = 2;
 
     private boolean running = false;
     private final ChatPlotInfoParser parser;
@@ -356,25 +360,44 @@ public class MappingController {
     private static final class SubmitTask {
         private final PlotInfo info;
         private int attempt;
+        private final String key;
 
         private SubmitTask(PlotInfo info) {
             this.info = info;
             this.attempt = 1;
+            this.key = buildSubmitKey(info);
         }
     }
 
     private final class SubmitPlotQueue implements Runnable {
         private final BlockingQueue<SubmitTask> queue = new LinkedBlockingQueue<>();
+        private final ConcurrentHashMap<String, SubmitTask> pendingByKey = new ConcurrentHashMap<>();
 
         private SubmitPlotQueue() {
-            Thread worker = new Thread(this, "SMD-SubmitQueue");
-            worker.setDaemon(true);
-            worker.start();
+            List<PlotInfo> pending = SubmitQueueStorage.loadPending();
+            if (!pending.isEmpty()) {
+                for (PlotInfo info : pending) {
+                    enqueueInternal(new SubmitTask(info), false);
+                }
+            }
+            for (int i = 1; i <= SUBMIT_WORKERS; i++) {
+                Thread worker = new Thread(this, "SMD-SubmitQueue-" + i);
+                worker.setDaemon(true);
+                worker.start();
+            }
         }
 
         private void enqueue(SubmitTask task) {
             if (task == null || task.info == null) return;
+            enqueueInternal(task, true);
+        }
+
+        private void enqueueInternal(SubmitTask task, boolean persist) {
+            if (task == null || task.info == null) return;
+            SubmitTask existing = pendingByKey.putIfAbsent(task.key, task);
+            if (existing != null) return;
             queue.offer(task);
+            if (persist) persistPending();
         }
 
         @Override
@@ -404,6 +427,10 @@ public class MappingController {
                 queue.offer(task);
                 return;
             }
+            if (result != null && (result.success || result.alreadyMapped)) {
+                pendingByKey.remove(task.key);
+                persistPending();
+            }
             dispatchToMainThread(() -> handleSubmitResult(task.info, result));
         }
 
@@ -413,5 +440,18 @@ public class MappingController {
             if (result.error != null && result.error.startsWith("NETWORK_ERROR")) return true;
             return result.httpStatus == 429 || result.httpStatus >= 500;
         }
+
+        private void persistPending() {
+            List<PlotInfo> snapshot = new ArrayList<>();
+            for (SubmitTask task : pendingByKey.values()) {
+                if (task != null && task.info != null) snapshot.add(task.info);
+            }
+            SubmitQueueStorage.savePending(snapshot);
+        }
+    }
+
+    private static String buildSubmitKey(PlotInfo info) {
+        if (info == null) return "";
+        return info.plotId + "|" + info.coordX + "|" + info.coordZ;
     }
 }
