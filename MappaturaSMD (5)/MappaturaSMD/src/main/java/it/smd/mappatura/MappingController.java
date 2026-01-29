@@ -161,10 +161,17 @@ public class MappingController {
 
         recordThroughput();
 
+        boolean alreadyMapped = PlotCacheManager.isPlotMapped(info.plotId);
+
         // 1) Salva in cache locale (persistente)
         PlotCacheManager.record(info);
 
         // 2) Enqueue push in background (istananeo sul gameplay)
+        if (alreadyMapped) {
+            HudOverlay.showBadge("⚠️ Plot già mappato (cache): " + info.plotId, HudOverlay.Badge.NEUTRAL);
+            return;
+        }
+
         if (!canSubmitNow(true)) {
             submitQueue.enqueue(new SubmitTask(info));
             HudOverlay.showBadge("⏱️ Plot in coda: " + info.plotId + " (" + info.coordX + ", " + info.coordZ + ")", HudOverlay.Badge.NEUTRAL);
