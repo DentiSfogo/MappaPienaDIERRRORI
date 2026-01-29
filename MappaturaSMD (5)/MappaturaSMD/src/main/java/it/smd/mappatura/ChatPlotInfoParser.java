@@ -53,6 +53,7 @@ public class ChatPlotInfoParser {
     private Integer fallbackCoordZ; // fallback da posizione player
     private String owner;
     private String last;
+    private String dimension;
 
     public ChatPlotInfoParser(MappingController controller) {
         this.controller = controller;
@@ -78,10 +79,15 @@ public class ChatPlotInfoParser {
     }
 
     public void beginRequest(long requestId, Integer fallbackX, Integer fallbackZ) {
+        beginRequest(requestId, fallbackX, fallbackZ, null);
+    }
+
+    public void beginRequest(long requestId, Integer fallbackX, Integer fallbackZ, String dimension) {
         resetInternal();
         this.requestId = requestId;
         this.fallbackCoordX = fallbackX;
         this.fallbackCoordZ = fallbackZ;
+        this.dimension = (dimension == null || dimension.isBlank()) ? null : dimension.trim();
         collecting = true;
         startedAtMs = System.currentTimeMillis();
         if (DEBUG) System.out.println("[SMD][PARSER] beginRequest()");
@@ -172,11 +178,12 @@ public class ChatPlotInfoParser {
         Integer useX = coordX != null ? coordX : fallbackCoordX;
         Integer useZ = coordZ != null ? coordZ : fallbackCoordZ;
         if (plotId != null && useX != null && useZ != null) {
+            String dim = (dimension == null || dimension.isBlank()) ? "overworld" : dimension;
             PlotInfo info = new PlotInfo(
                     plotId,
                     useX,
                     useZ,
-                    "overworld",
+                    dim,
                     owner,
                     toIso(last),
                     requestId
@@ -199,6 +206,7 @@ public class ChatPlotInfoParser {
         fallbackCoordZ = null;
         owner = null;
         last = null;
+        dimension = null;
         requestId = 0L;
     }
 

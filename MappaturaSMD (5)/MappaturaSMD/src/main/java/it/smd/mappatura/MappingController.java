@@ -259,7 +259,15 @@ public class MappingController {
         inFlight.sentAtMs = now;
         String cmd = ConfigManager.get() != null ? ConfigManager.get().plotInfoCommand : "plot info";
         sendCommand(client, cmd);
-        parser.beginRequest(req.requestId, req.fallbackX, req.fallbackZ);
+        String dimension = null;
+        if (client.world != null && client.world.getRegistryKey() != null) {
+            dimension = client.world.getRegistryKey().getValue().getPath();
+        }
+        AppConfig cfg = ConfigManager.get();
+        if (dimension == null || dimension.isBlank()) {
+            dimension = cfg != null ? cfg.dimensionDefault : null;
+        }
+        parser.beginRequest(req.requestId, req.fallbackX, req.fallbackZ, dimension);
         lastCommandAtMs = now;
     }
 
@@ -414,10 +422,8 @@ public class MappingController {
         }
 
         private void handleSubmitTask(SubmitTask task) throws InterruptedException {
-            if (!canSubmitNow(false)) {
+            while (!canSubmitNow(false)) {
                 Thread.sleep(SUBMIT_RETRY_BASE_DELAY_MS);
-                queue.offer(task);
-                return;
             }
             SubmitPlotClient.SubmitResult result = SubmitPlotClient.submitBlocking(task.info);
             if (shouldRetry(result) && task.attempt < SUBMIT_MAX_ATTEMPTS) {
