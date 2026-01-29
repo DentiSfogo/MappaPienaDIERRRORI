@@ -312,9 +312,10 @@ public class MappingController {
         }
     }
 
-    private void handleSubmitResult(PlotInfo info, SubmitPlotClient.SubmitResult result) {
+    private void handleSubmitResult(PlotInfo info, SubmitPlotClient.SubmitResult result, int attempt) {
+        String plotLabel = formatPlotLabel(info);
         if (result == null) {
-            HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (nessuna risposta)", HudOverlay.Badge.ERROR);
+            HudOverlay.showBadge("❌ Submit fallito per " + plotLabel + ": NETWORK_ERROR (nessuna risposta)", HudOverlay.Badge.ERROR);
             return;
         }
         if (!result.success) {
@@ -322,18 +323,19 @@ public class MappingController {
             String detail = buildSubmitFailureDetail(result);
             if ("NETWORK_ERROR".equals(rawError) && result.debug != null && result.debug.has("exception")) {
                 String exception = result.debug.get("exception").getAsString();
-                HudOverlay.showBadge("❌ Submit fallito: NETWORK_ERROR (" + exception + ")", HudOverlay.Badge.ERROR);
+                HudOverlay.showBadge("❌ Submit fallito per " + plotLabel + ": NETWORK_ERROR (" + exception + ")", HudOverlay.Badge.ERROR);
                 return;
             }
             if (result.httpStatus == 403 && "NOT_WHITELISTED".equalsIgnoreCase(rawError)) {
-                HudOverlay.showBadge("⛔ Accesso negato: richiedi la whitelist.", HudOverlay.Badge.ERROR);
+                HudOverlay.showBadge("⛔ Submit bloccato per " + plotLabel + ": richiedi la whitelist.", HudOverlay.Badge.ERROR);
                 return;
             }
             if (result.httpStatus == 404) {
-                HudOverlay.showBadge("❌ Sessione non trovata o non attiva.", HudOverlay.Badge.ERROR);
+                HudOverlay.showBadge("❌ Submit fallito per " + plotLabel + ": sessione non trovata o non attiva.", HudOverlay.Badge.ERROR);
                 return;
             }
-            HudOverlay.showBadge("❌ Submit fallito: " + detail, HudOverlay.Badge.ERROR);
+            String retryNote = attempt >= SUBMIT_MAX_ATTEMPTS ? " (tentativi esauriti)" : "";
+            HudOverlay.showBadge("❌ Submit fallito per " + plotLabel + ": " + detail + retryNote, HudOverlay.Badge.ERROR);
             return;
         }
         if (result.alreadyMapped) {
@@ -382,7 +384,7 @@ public class MappingController {
         lastSubmitRetryWarnAtMs = now;
         String reason = (detail == null || detail.isBlank()) ? "errore sconosciuto" : detail;
         String message = "⚠️ Invio fallito (" + reason + "). Riprovo " + (task.attempt + 1) + "/" + SUBMIT_MAX_ATTEMPTS
-                + " tra " + (delayMs / 1000) + "s.";
+                + " per " + formatPlotLabel(task.info) + " tra " + (delayMs / 1000) + "s.";
         dispatchToMainThread(() -> HudOverlay.showBadge(message, HudOverlay.Badge.NEUTRAL));
     }
 
@@ -396,6 +398,11 @@ public class MappingController {
             error += " [HTTP " + result.httpStatus + "]";
         }
         return error;
+    }
+
+    private String formatPlotLabel(PlotInfo info) {
+        if (info == null) return "plot sconosciuto";
+        return info.plotId + " (" + info.coordX + ", " + info.coordZ + ")";
     }
 
     private void dispatchToMainThread(Runnable task) {
@@ -482,7 +489,8 @@ public class MappingController {
                 pendingByKey.remove(task.key);
                 persistPending();
             }
-            dispatchToMainThread(() -> handleSubmitResult(task.info, result));
+            int attemptSnapshot = task.attempt;
+            dispatchToMainThread(() -> handleSubmitResult(task.info, result, attemptSnapshot));
         }
 
         private boolean shouldRetry(SubmitPlotClient.SubmitResult result) {
