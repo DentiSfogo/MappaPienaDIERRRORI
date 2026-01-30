@@ -22,7 +22,7 @@ public class MappaturaSMDClient implements ClientModInitializer {
     public void onInitializeClient() {
         ConfigManager.init();
 
-        // ✅ Cache persistente (non si svuota tra riavvii)
+        // ✅ Cache solo per la sessione (si svuota quando esci/rientri)
         PlotCacheManager.init();
 
         // ✅ Comandi /mappatura (cerca/copia/svuotaCache/refresh/richiestawhitelist)
@@ -70,6 +70,7 @@ public class MappaturaSMDClient implements ClientModInitializer {
             if (controller != null && controller.isRunning()) controller.stop();
             checkedOnce = false;
             authorized = false;
+            PlotCacheManager.clear();
         });
 
         // auto-start quando entri, se impostato e codice sessione presente
