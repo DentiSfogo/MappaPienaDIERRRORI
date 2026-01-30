@@ -180,10 +180,7 @@ public class MappingController {
 
         boolean alreadyMapped = PlotCacheManager.isPlotMapped(info);
 
-        // 1) Salva in cache locale (persistente)
-        PlotCacheManager.record(info);
-
-        // 2) Enqueue push in background (istananeo sul gameplay)
+        // 1) Enqueue push in background (istananeo sul gameplay)
         if (alreadyMapped) {
             HudOverlay.showBadge("⚠️ Plot già mappato (cache): " + info.plotId, HudOverlay.Badge.NEUTRAL);
             return;
@@ -518,6 +515,7 @@ public class MappingController {
                 return;
             }
             if (result != null && (result.success || result.alreadyMapped)) {
+                PlotCacheManager.record(task.info);
                 pendingByKey.remove(task.key);
                 persistPending();
             }
