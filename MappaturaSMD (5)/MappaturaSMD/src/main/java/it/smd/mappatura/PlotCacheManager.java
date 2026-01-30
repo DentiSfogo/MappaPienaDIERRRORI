@@ -1,21 +1,17 @@
 package it.smd.mappatura;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import net.fabricmc.loader.api.FabricLoader;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Cache locale persistente (NON si svuota quando esci/rientri).
- * Salva su config/mappaturasmd_cache.json
+ * Cache locale SOLO per la sessione corrente (si svuota quando esci/rientri).
+ * Non salva più su disco.
  */
 public class PlotCacheManager {
 
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String FILE_NAME = "mappaturasmd_cache.json";
     private static final String UNKNOWN_OWNER = "Senza proprietario";
 
@@ -45,12 +41,8 @@ public class PlotCacheManager {
         }
     }
 
-    private static class Persisted {
-        public Map<String, List<Entry>> byOwner = new HashMap<>();
-    }
-
     public static synchronized void init() {
-        load();
+        clearPersistedCacheFile();
     }
 
     /** Registra un plot (de-dup per plotId) */
@@ -76,7 +68,6 @@ public class PlotCacheManager {
 
         list.add(new Entry(ownerOriginal, normalizedPlotId, coordX, coordZ));
         PLOT_IDS.add(normalizedPlotId);
-        save();
     }
 
     /** Ritorna tutti i plot assegnati a un owner (cache locale) */
@@ -147,44 +138,14 @@ public class PlotCacheManager {
     public static synchronized void clear() {
         BY_OWNER.clear();
         PLOT_IDS.clear();
-        save();
+        clearPersistedCacheFile();
     }
 
-    private static void load() {
+    private static void clearPersistedCacheFile() {
         try {
             Path cfgDir = FabricLoader.getInstance().getConfigDir();
             Path file = cfgDir.resolve(FILE_NAME);
-            if (!Files.exists(file)) return;
-
-            String s = Files.readString(file, StandardCharsets.UTF_8);
-            Persisted p = GSON.fromJson(s, Persisted.class);
-
-            if (p != null && p.byOwner != null) {
-                BY_OWNER.clear();
-                BY_OWNER.putAll(p.byOwner);
-                PLOT_IDS.clear();
-                for (List<Entry> list : BY_OWNER.values()) {
-                    if (list == null) continue;
-                    for (Entry entry : list) {
-                        if (entry != null && entry.plotId != null && !entry.plotId.isBlank()) {
-                            PLOT_IDS.add(entry.plotId.trim());
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private static void save() {
-        try {
-            Path cfgDir = FabricLoader.getInstance().getConfigDir();
-            Files.createDirectories(cfgDir);
-
-            Persisted p = new Persisted();
-            p.byOwner = BY_OWNER;
-
-            Path file = cfgDir.resolve(FILE_NAME);
-            Files.writeString(file, GSON.toJson(p), StandardCharsets.UTF_8);
+            Files.deleteIfExists(file);
         } catch (Exception ignored) {}
     }
 }
